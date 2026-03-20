@@ -6,7 +6,6 @@ import sys
 
 pygame.init()
 
-# Настройки
 WIDTH, HEIGHT = 800, 600
 TILE_SIZE = 50
 INTERFACE_HEIGHT = 80
@@ -15,8 +14,6 @@ screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Mini What?")
 cols, rows = WIDTH // TILE_SIZE, FIELD_HEIGHT // TILE_SIZE
 
-
-# ===== ИСПРАВЛЕНИЕ ШРИФТА =====
 def load_font(size):
     """Пытается загрузить шрифт с поддержкой Unicode символов"""
     font_names = ["segoeuisymbol", "segoe ui", "arial", "dejavusans", "freesansbold", None]
@@ -36,12 +33,10 @@ big_font = load_font(60)
 small_font = load_font(20)
 card_font = load_font(16)
 damage_font = load_font(32) 
-# ============================
 
 clock = pygame.time.Clock()
 VISIBILITY_RADIUS = 2
 
-# Цвета
 BG_TOP, BG_BOTTOM = (34, 139, 34), (144, 238, 144)
 GRID_COLOR, GRID_BORDER = (25, 100, 25, 120), (18, 72, 18)
 PLAYER_COLOR, PLAYER_GLOW, PLAYER_HIGHLIGHT = (255, 107, 107), (255, 150, 150), (255, 214, 107)
@@ -55,8 +50,6 @@ MENU_BG_TOP, MENU_BG_BOTTOM = (25, 32, 50), (45, 52, 70)
 MENU_BTN_BLUE, MENU_BTN_BLUE_HOVER = (100, 149, 237), (135, 206, 250)
 MENU_BTN_RED, MENU_BTN_RED_HOVER = (255, 99, 71), (255, 130, 102)
 
-
-# ===== ЗАГРУЗКА ИЗОБРАЖЕНИЙ ЮНИТОВ =====
 def load_unit_image(filepath):
     """Загружает изображение юнита с прозрачностью"""
     try:
@@ -71,10 +64,6 @@ def load_unit_image(filepath):
 
 player_unit_img = load_unit_image("player_pawn.png")
 bot_unit_img = load_unit_image("bot_pawn.png")
-
-
-# =========================================
-
 
 def get_empty_pos(existing_units):
     while True:
@@ -103,7 +92,6 @@ def move_towards(start, target):
 def main_menu():
     running_menu = True
 
-    # ===== СНЕГ =====
     snowflakes = []
     for _ in range(100):
         snowflakes.append({
@@ -113,10 +101,8 @@ def main_menu():
             'speed': random.uniform(0.5, 2.0),
             'wind': random.uniform(-0.3, 0.3)
         })
-    # ================
 
     while running_menu:
-        # Градиентный фон
         for y in range(HEIGHT):
             ratio = y / HEIGHT
             r = int(MENU_BG_TOP[0] * (1 - ratio) + MENU_BG_BOTTOM[0] * ratio)
@@ -124,7 +110,6 @@ def main_menu():
             b = int(MENU_BG_TOP[2] * (1 - ratio) + MENU_BG_BOTTOM[2] * ratio)
             pygame.draw.line(screen, (r, g, b), (0, y), (WIDTH, y))
 
-        # ===== ОТРИСОВКА СНЕГА =====
         for flake in snowflakes:
             pygame.draw.circle(screen, (255, 255, 255), (int(flake['x']), int(flake['y'])), flake['size'])
             flake['y'] += flake['speed']
@@ -136,11 +121,9 @@ def main_menu():
                 flake['x'] = 0
             elif flake['x'] < 0:
                 flake['x'] = WIDTH
-        # ==========================
 
         menu_mouse_x, menu_mouse_y = pygame.mouse.get_pos()
 
-        # ===== ИЗМЕНЕНИЕ КНОПОК =====
         button_width, button_height, button_spacing = 260, 60, 0
         play_btn = pygame.Rect(WIDTH // 2 - button_width // 2, HEIGHT // 2 - button_height,
                                button_width, button_height)
@@ -148,7 +131,6 @@ def main_menu():
                                    button_height)
         exit_btn = pygame.Rect(WIDTH // 2 - button_width // 2, HEIGHT // 2 + button_height,
                                button_width, button_height)
-        # ============================
 
         buttons = [(play_btn, "▶ PLAY", MENU_BTN_BLUE, MENU_BTN_BLUE_HOVER),
                    (settings_btn, "⚙ SETTINGS", MENU_BTN_BLUE, MENU_BTN_BLUE_HOVER),
@@ -165,13 +147,13 @@ def main_menu():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
-                sys.exit()  # 🔧 Исправлено: exit() → sys.exit()
+                sys.exit()
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 if play_btn.collidepoint(menu_mouse_x, menu_mouse_y):
                     running_menu = False
                 elif exit_btn.collidepoint(menu_mouse_x, menu_mouse_y):
                     pygame.quit()
-                    sys.exit()  # 🔧 Исправлено: exit() → sys.exit()
+                    sys.exit()
             if event.type == pygame.MOUSEMOTION:
                 if any(btn.collidepoint(menu_mouse_x, menu_mouse_y) for btn, _, _, _ in buttons):
                     pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
@@ -187,7 +169,7 @@ def run_game():
     selected_unit, battle_effects, current_turn = None, [], "player"
     game_over, winner, bot_action_index, bot_wait_until = False, None, 0, 0
     explored_tiles, TURN_TIME, turn_timer_start = set(), 30000, pygame.time.get_ticks()
-    damage_numbers = []  # 🔧 Список для цифр урона
+    damage_numbers = []
 
     def get_visible_tiles():
         visible = set()
@@ -286,7 +268,6 @@ def run_game():
                                        (TILE_SIZE // 2 + 10, TILE_SIZE // 2 + 10), TILE_SIZE // 3 + 12 + i * 4, 3)
                     screen.blit(highlight_surf, (px - TILE_SIZE // 2 - 10, py - TILE_SIZE // 2 - 10))
 
-    # 🔧 НОВАЯ ФУНКЦИЯ: отрисовка цифр урона
     def draw_damage_numbers(visible):
         nonlocal damage_numbers
         new_damage_numbers = []
@@ -294,27 +275,23 @@ def run_game():
         for dmg in damage_numbers:
             ex, ey = dmg["pos"]
 
-            # Пропускаем отрисовку урона в тумане (для ботов)
             if (ex, ey) not in visible:
                 new_damage_numbers.append(dmg)
                 continue
 
             px = ex * TILE_SIZE + TILE_SIZE // 2
-            py = dmg["y_offset"]  # Анимация всплытия
+            py = dmg["y_offset"]
 
-            # Цвет зависит от величины урона
             if dmg["value"] >= 4:
-                color = (255, 69, 0)  # 🔴 Крит (красный)
+                color = (255, 69, 0)
             elif dmg["value"] >= 3:
-                color = (255, 140, 0)  # 🟠 Сильный (оранжевый)
+                color = (255, 140, 0)
             else:
-                color = (255, 255, 255)  # ⚪ Обычный (белый)
+                color = (255, 255, 255)
 
-            # Альфа-канал для исчезновения
             alpha = min(255, dmg["timer"] * 15)
             damage_surf = pygame.Surface((60, 40), pygame.SRCALPHA)
 
-            # Рендерим текст с обводкой
             text = damage_font.render(f"-{dmg['value']}", True, color)
             shadow = damage_font.render(f"-{dmg['value']}", True, (0, 0, 0))
 
@@ -324,7 +301,6 @@ def run_game():
 
             screen.blit(damage_surf, (px - 30, py - 20))
 
-            # Анимация: всплывает вверх
             dmg["y_offset"] -= 1.5
             dmg["timer"] -= 1
 
@@ -429,7 +405,6 @@ def run_game():
             if dx <= 1 and dy <= 1 and (dx + dy) != 0:
                 damage = random.randint(1, 4)
                 p_unit["hp"] -= damage
-                # 🔧 Добавляем цифру урона
                 damage_numbers.append({
                     "pos": p_unit["pos"],
                     "value": damage,
@@ -484,7 +459,7 @@ def run_game():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
-                sys.exit()  # 🔧 Исправлено: exit() → sys.exit()
+                sys.exit()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
                 if game_over:
                     return
@@ -519,7 +494,6 @@ def run_game():
                             if enemy_unit:
                                 damage = random.randint(1, 4)
                                 enemy_unit["hp"] -= damage
-                                # 🔧 Добавляем цифру урона
                                 damage_numbers.append({
                                     "pos": enemy_unit["pos"],
                                     "value": damage,
