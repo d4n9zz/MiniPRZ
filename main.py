@@ -2,7 +2,7 @@ import pygame
 import random
 import math
 import os
-import sys  # 🔧 Добавлен импорт sys
+import sys
 
 pygame.init()
 
@@ -35,7 +35,7 @@ font = load_font(28)
 big_font = load_font(60)
 small_font = load_font(20)
 card_font = load_font(16)
-damage_font = load_font(32)  # 🔧 Шрифт для цифр урона
+damage_font = load_font(32) 
 # ============================
 
 clock = pygame.time.Clock()
@@ -456,7 +456,7 @@ def run_game():
         draw_background()
         draw_grid()
         draw_units(visible_tiles)
-        draw_damage_numbers(visible_tiles)  # 🔧 Рисуем цифры урона
+        draw_damage_numbers(visible_tiles)
         draw_battle_effects(visible_tiles)
         draw_fog_of_war()
 
