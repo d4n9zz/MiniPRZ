@@ -7,8 +7,8 @@
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
 # MiniPRZ
-My project in колледж 1 курс.
-
+Мой слоп контент который я хочу превратить в игру в которой будет хоть чуть чуть интересно. 
+А так же это мой project in 1 курс
 
 ### ♿ Windows
 
