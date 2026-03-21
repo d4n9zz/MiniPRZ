@@ -5,13 +5,13 @@
 ![Library](https://img.shields.io/badge/library-pygame-orange.svg)
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
-### 🎮 MiniPRZ
+## 🎮 MiniPRZ
 > Мой слоп-контент, который я хочу превратить в игру, в которой будет хоть чуть-чуть интересно.  
 > Разработан в рамках 1-го курса колледжа
 
 ## 
 
-### ♿ Windows
+## ♿ Windows
 1. Открой cmd в папке с проектом
 
 2. Установи зависимости: pip, а далее pyinstaller (через pip)
@@ -20,3 +20,4 @@
 ```
 pyinstaller --onefile --windowed --name MiniPRZ --add-data "menu_music.mp3;." --add-data "game_music.mp3;." --add-data "player_pawn.png;." --add-data "bot_pawn.png;." main.py
 ```
+## Или скачай готовый релиз
