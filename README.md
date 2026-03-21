@@ -8,3 +8,9 @@
 
 # MiniPRZ
 My project in колледж 1 курс.
+
+
+
+Что бы создать игру из исходников 
+
+pyinstaller --onefile --windowed --name MiniPRZ --add-data "menu_music.mp3;." --add-data "game_music.mp3;." --add-data "player_pawn.png;." --add-data "bot_pawn.png;." main.py
