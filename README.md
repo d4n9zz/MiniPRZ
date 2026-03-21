@@ -11,10 +11,11 @@ My project in колледж 1 курс.
 
 
 ### ♿ Windows
-```batch
-Скачай релизную версию и всё 
 
-Что бы создать игру из исходников 
+
+```batch
+Что бы создать игру из исходников перейди в cmd в папку с исходниками и запусти скрипт
+Так нужно скачать pyinstaller через pip
 
 pyinstaller --onefile --windowed --name MiniPRZ --add-data "menu_music.mp3;." --add-data "game_music.mp3;." --add-data "player_pawn.png;." --add-data "bot_pawn.png;." main.py
 ```
