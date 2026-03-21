@@ -21,6 +21,6 @@
 
 ### 3. Введи эту команду:
 ```
-pyinstaller --onefile --windowed --name MiniPRZ --add-data "menu_music.mp3;." --add-data "game_music.mp3;." --add-data "player_pawn.png;." --add-data "bot_pawn.png;." main.py
+pyinstaller --onefile --windowed --name MiniPRZ main.py
 ```
 ## Или скачай готовый релиз
