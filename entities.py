@@ -3,9 +3,16 @@ import settings
 from utils import move_towards, get_unit_at, get_empty_pos, COLS, ROWS
 
 class Unit:
-    def __init__(self, pos, hp=10, is_player=False):
+    def __init__(self, pos, unit_type='pawn', is_player=False):
+        type_data = settings.UNIT_TYPES.get(unit_type, settings.UNIT_TYPES['pawn'])
         self.pos = list(pos)
-        self.hp = hp
+        self.unit_type = unit_type
+        self.name = type_data['name']
+        self.hp = type_data['hp']
+        self.max_hp = type_data['hp']
+        self.damage_range = type_data['damage']
+        self.color = type_data['color']
+        self.speed = type_data['speed']
         self.is_player = is_player
         self.move_path = []
         self.has_moved = False
@@ -14,6 +21,9 @@ class Unit:
 
     def is_alive(self):
         return self.hp > 0
+
+    def get_attack_damage(self):
+        return random.randint(self.damage_range[0], self.damage_range[1])
 
     def update_animation(self):
         if not self.move_path:
@@ -24,7 +34,7 @@ class Unit:
         target_px = target[0] * settings.TILE_SIZE + settings.TILE_SIZE // 2
         target_py = target[1] * settings.TILE_SIZE + settings.TILE_SIZE // 2
         dx, dy = target_px - self.px, target_py - self.py
-        step = 6
+        step = self.speed
         if abs(dx) <= step and abs(dy) <= step:
             self.pos = list(target)
             self.move_path.pop(0)
@@ -35,9 +45,11 @@ class Unit:
 
 def create_units(count, existing_units, is_player):
     units = []
+    unit_types = list(settings.UNIT_TYPES.keys())
     for _ in range(count):
         pos = get_empty_pos(existing_units + units)
-        units.append(Unit(pos, is_player=is_player))
+        unit_type = random.choice(unit_types)
+        units.append(Unit(pos, unit_type=unit_type, is_player=is_player))
     return units
 
 def bot_step(bot_unit, player_units, bot_units, damage_callback, effect_callback):
@@ -45,7 +57,7 @@ def bot_step(bot_unit, player_units, bot_units, damage_callback, effect_callback
         dx = abs(bot_unit.pos[0] - p_unit.pos[0])
         dy = abs(bot_unit.pos[1] - p_unit.pos[1])
         if dx <= 1 and dy <= 1 and (dx + dy) != 0:
-            attack_damage = random.randint(1, 4)
+            attack_damage = bot_unit.get_attack_damage()
             p_unit.hp -= attack_damage
             damage_callback(p_unit.pos, attack_damage)
             effect_callback(p_unit.pos)

@@ -8,13 +8,12 @@ from settings import (
     UI_TEXT, UI_BG, UI_BORDER
 )
 from music import play_menu
-
+from config import set_music_volume
 
 def settings_menu(screen, clock):
     from settings import font
     running_settings = True
     vol = settings.MUSIC_VOLUME
-
     while running_settings:
         for y in range(HEIGHT):
             ratio = y / HEIGHT
@@ -64,16 +63,17 @@ def settings_menu(screen, clock):
                     vol = max(0.0, vol - 0.1)
                     settings.MUSIC_VOLUME = vol
                     pygame.mixer.music.set_volume(vol)
+                    set_music_volume(vol)
                 elif btn_plus.collidepoint(mouse_x, mouse_y):
                     vol = min(1.0, vol + 0.1)
                     settings.MUSIC_VOLUME = vol
                     pygame.mixer.music.set_volume(vol)
+                    set_music_volume(vol)
                 elif btn_back.collidepoint(mouse_x, mouse_y):
                     running_settings = False
 
         pygame.display.update()
         clock.tick(60)
-
 
 def main_menu(screen, clock):
     from settings import font
@@ -88,7 +88,6 @@ def main_menu(screen, clock):
             'speed': random.uniform(0.5, 2.0),
             'wind': random.uniform(-0.3, 0.3)
         })
-
     while running_menu:
         for y in range(HEIGHT):
             ratio = y / HEIGHT

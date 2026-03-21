@@ -6,23 +6,22 @@ from settings import (
     FIELD_HEIGHT, WIDTH, INTERFACE_HEIGHT
 )
 
-def draw_unit_card(screen, card_x, card_y, unit_color, hp_value):
+def draw_unit_card(screen, card_x, card_y, unit):
     from settings import card_font
     card_width, card_height = 70, 60
     card_rect = pygame.Rect(card_x, card_y, card_width, card_height)
-
     pygame.draw.rect(screen, UI_BG, card_rect, border_radius=8)
-    pygame.draw.rect(screen, unit_color, card_rect, 2, border_radius=8)
-    pygame.draw.line(screen, unit_color,
+    pygame.draw.rect(screen, unit.color, card_rect, 2, border_radius=8)
+    pygame.draw.line(screen, unit.color,
                      (card_x + 10, card_y + 30),
                      (card_x + card_width - 10, card_y + 30), 2)
 
     if card_font:
-        pawn_text = card_font.render("PAWN", True, unit_color)
-        screen.blit(pawn_text, pawn_text.get_rect(
+        type_text = card_font.render(unit.name, True, unit.color)
+        screen.blit(type_text, type_text.get_rect(
             center=(card_x + card_width // 2, card_y + 16)))
 
-        hp_text = card_font.render(f"HP {hp_value}", True, UI_TEXT)
+        hp_text = card_font.render(f"HP {unit.hp}", True, UI_TEXT)
         screen.blit(hp_text, hp_text.get_rect(
             center=(card_x + card_width // 2, card_y + 44)))
 
@@ -32,7 +31,6 @@ def draw_interface(screen, current_turn, player_units, bot_units,
     panel_rect = pygame.Rect(0, FIELD_HEIGHT, WIDTH, INTERFACE_HEIGHT)
     pygame.draw.rect(screen, UI_BG, panel_rect)
     pygame.draw.rect(screen, UI_BORDER, panel_rect, 3)
-
     if font:
         turn_text = font.render(f"✦ Turn: {current_turn.upper()} ✦", True, UI_TEXT)
         screen.blit(turn_text, (25, FIELD_HEIGHT + 22))
@@ -50,12 +48,10 @@ def draw_interface(screen, current_turn, player_units, bot_units,
         screen.blit(button_text, button_text.get_rect(center=btn_rect.center))
 
     for i, unit in enumerate(player_units):
-        draw_unit_card(screen, 280 + i * 80, FIELD_HEIGHT + 10,
-                       PLAYER_COLOR, unit.hp)
+        draw_unit_card(screen, 280 + i * 80, FIELD_HEIGHT + 10, unit)
 
     for i, unit in enumerate(bot_units):
-        draw_unit_card(screen, WIDTH - 340 + i * 80, FIELD_HEIGHT + 10,
-                       BOT_COLOR, unit.hp)
+        draw_unit_card(screen, WIDTH - 340 + i * 80, FIELD_HEIGHT + 10, unit)
 
     if current_turn == "player":
         _draw_timer(screen, turn_timer_start, turn_time, small_font)
@@ -72,7 +68,6 @@ def _draw_timer(screen, turn_timer_start, turn_time, small_font):
                      (bar_x - 4, bar_y - 4, bar_w + 8, bar_h + 8), border_radius=10)
     pygame.draw.rect(screen, (50, 55, 75),
                      (bar_x, bar_y, bar_w, bar_h), border_radius=8)
-
     fill_col = TIMER_DANGER if remaining <= 5000 else TIMER_WARNING if remaining <= 10000 else TIMER_SAFE
     pygame.draw.rect(screen, fill_col,
                      (bar_x, bar_y, int(bar_w * ratio), bar_h), border_radius=8)

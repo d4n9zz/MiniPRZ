@@ -4,7 +4,7 @@ from settings import (
     WIDTH, HEIGHT, TILE_SIZE, FIELD_HEIGHT, VISIBILITY_RADIUS,
     TURN_TIME, BG_TOP, BG_BOTTOM, GRID_COLOR, GRID_BORDER,
     FOG_UNEXPLORED, FOG_EXPLORED_NO_VIS, PLAYER_HIGHLIGHT,
-    COLS, ROWS
+    COLS, ROWS, BOT_GLOW
 )
 from entities import create_units, bot_step
 from effects import DamageNumber, BattleEffect
@@ -74,10 +74,7 @@ class Game:
                     self.screen.blit(fog_overlay, tile_rect.topleft)
 
     def _draw_units(self, visible):
-        from settings import (
-            PLAYER_COLOR, PLAYER_GLOW, BOT_COLOR, BOT_GLOW,
-            player_unit_img, bot_unit_img
-        )
+        from settings import player_unit_img, bot_unit_img
         for unit in self.player_units + self.bot_units:
             if tuple(unit.pos) not in visible and not unit.is_player:
                 continue
@@ -88,10 +85,9 @@ class Game:
                 img_rect = bot_unit_img.get_rect(center=(int(unit.px), int(unit.py)))
                 self.screen.blit(bot_unit_img, img_rect)
             else:
-                color = PLAYER_COLOR if unit.is_player else BOT_COLOR
-                glow = PLAYER_GLOW if unit.is_player else BOT_GLOW
+                glow = PLAYER_HIGHLIGHT if unit.is_player else BOT_GLOW
                 pygame.draw.circle(self.screen, glow, (int(unit.px), int(unit.py)), TILE_SIZE // 3 + 10)
-                pygame.draw.circle(self.screen, color, (int(unit.px), int(unit.py)), TILE_SIZE // 3)
+                pygame.draw.circle(self.screen, unit.color, (int(unit.px), int(unit.py)), TILE_SIZE // 3)
                 pygame.draw.circle(self.screen, (255, 255, 255), (int(unit.px), int(unit.py)), TILE_SIZE // 3, 2)
 
             if unit == self.selected_unit:
@@ -102,7 +98,7 @@ class Game:
                                        (TILE_SIZE // 2 + 10, TILE_SIZE // 2 + 10),
                                        TILE_SIZE // 3 + 12 + i * 4, 3)
                     self.screen.blit(highlight_surf,
-                                        (unit.px - TILE_SIZE // 2 - 10, unit.py - TILE_SIZE // 2 - 10))
+                                     (unit.px - TILE_SIZE // 2 - 10, unit.py - TILE_SIZE // 2 - 10))
 
     def _handle_input(self, interface_btn):
         for event in pygame.event.get():
@@ -141,7 +137,7 @@ class Game:
                     self.selected_unit = None
 
     def _perform_attack(self, attacker, defender):
-        attack_damage = random.randint(1, 4)
+        attack_damage = attacker.get_attack_damage()
         defender.hp -= attack_damage
         self.damage_numbers.append(DamageNumber(defender.pos, attack_damage))
         self.battle_effects.append(BattleEffect(defender.pos))
