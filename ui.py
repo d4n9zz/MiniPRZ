@@ -1,11 +1,9 @@
 import pygame
 from settings import (
     UI_BG, UI_BORDER, UI_TEXT, UI_BUTTON_NORMAL,
-    UI_BUTTON_HOVER, UI_BUTTON_SHADOW, PLAYER_COLOR,
-    BOT_COLOR, TIMER_SAFE, TIMER_WARNING, TIMER_DANGER,
+    UI_BUTTON_HOVER, UI_BUTTON_SHADOW, TIMER_SAFE, TIMER_WARNING, TIMER_DANGER,
     FIELD_HEIGHT, WIDTH, INTERFACE_HEIGHT
 )
-
 def draw_unit_card(screen, card_x, card_y, unit):
     from settings import card_font
     card_width, card_height = 70, 60
@@ -15,18 +13,15 @@ def draw_unit_card(screen, card_x, card_y, unit):
     pygame.draw.line(screen, unit.color,
                      (card_x + 10, card_y + 30),
                      (card_x + card_width - 10, card_y + 30), 2)
-
     if card_font:
         type_text = card_font.render(unit.name, True, unit.color)
         screen.blit(type_text, type_text.get_rect(
             center=(card_x + card_width // 2, card_y + 16)))
-
         hp_text = card_font.render(f"HP {unit.hp}", True, UI_TEXT)
         screen.blit(hp_text, hp_text.get_rect(
             center=(card_x + card_width // 2, card_y + 44)))
-
 def draw_interface(screen, current_turn, player_units, bot_units,
-                   turn_timer_start, turn_time):
+                   turn_timer_start, turn_time, selected_unit):
     from settings import font, small_font
     panel_rect = pygame.Rect(0, FIELD_HEIGHT, WIDTH, INTERFACE_HEIGHT)
     pygame.draw.rect(screen, UI_BG, panel_rect)
@@ -34,30 +29,30 @@ def draw_interface(screen, current_turn, player_units, bot_units,
     if font:
         turn_text = font.render(f"✦ Turn: {current_turn.upper()} ✦", True, UI_TEXT)
         screen.blit(turn_text, (25, FIELD_HEIGHT + 22))
-
     btn_rect = pygame.Rect(WIDTH - 170, FIELD_HEIGHT + 12, 150, 56)
     mouse_x, mouse_y = pygame.mouse.get_pos()
     btn_color = UI_BUTTON_HOVER if btn_rect.collidepoint(mouse_x, mouse_y) else UI_BUTTON_NORMAL
-
     pygame.draw.rect(screen, UI_BUTTON_SHADOW, btn_rect.move(4, 4), border_radius=12)
     pygame.draw.rect(screen, btn_color, btn_rect, border_radius=12)
     pygame.draw.rect(screen, (255, 255, 255), btn_rect, 2, border_radius=12)
-
     if font:
         button_text = font.render("END TURN", True, UI_TEXT)
         screen.blit(button_text, button_text.get_rect(center=btn_rect.center))
-
     for i, unit in enumerate(player_units):
         draw_unit_card(screen, 280 + i * 80, FIELD_HEIGHT + 10, unit)
-
     for i, unit in enumerate(bot_units):
         draw_unit_card(screen, WIDTH - 340 + i * 80, FIELD_HEIGHT + 10, unit)
-
+    if selected_unit:
+        info_x = WIDTH // 2
+        info_y = FIELD_HEIGHT + 20
+        if font:
+            sel_text = font.render(f"SELECTED: {selected_unit.name}", True, selected_unit.color)
+            screen.blit(sel_text, sel_text.get_rect(center=(info_x, info_y)))
+            hp_text = font.render(f"HP: {selected_unit.hp}/{selected_unit.max_hp}", True, UI_TEXT)
+            screen.blit(hp_text, hp_text.get_rect(center=(info_x, info_y + 30)))
     if current_turn == "player":
         _draw_timer(screen, turn_timer_start, turn_time, small_font)
-
     return btn_rect
-
 def _draw_timer(screen, turn_timer_start, turn_time, small_font):
     interface_time = pygame.time.get_ticks()
     remaining = max(0, turn_time - (interface_time - turn_timer_start))
@@ -71,7 +66,6 @@ def _draw_timer(screen, turn_timer_start, turn_time, small_font):
     fill_col = TIMER_DANGER if remaining <= 5000 else TIMER_WARNING if remaining <= 10000 else TIMER_SAFE
     pygame.draw.rect(screen, fill_col,
                      (bar_x, bar_y, int(bar_w * ratio), bar_h), border_radius=8)
-
     if small_font:
         secs = int((remaining + 999) / 1000)
         time_text = small_font.render(f"⏱ {secs}s", True, UI_TEXT)

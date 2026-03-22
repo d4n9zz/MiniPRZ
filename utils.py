@@ -3,7 +3,6 @@ import os
 import random
 from settings import FONT_FALLBACKS, TILE_SIZE, COLS, ROWS
 
-
 def load_font(size):
     for name in FONT_FALLBACKS:
         try:
@@ -15,7 +14,6 @@ def load_font(size):
             continue
     return pygame.font.SysFont(None, size)
 
-
 def load_unit_image(filepath):
     try:
         if os.path.exists(filepath):
@@ -25,7 +23,6 @@ def load_unit_image(filepath):
     except pygame.error as e:
         print(f"Не удалось загрузить {filepath}: {e}")
     return None
-
 
 def get_empty_pos(existing_units):
     while True:
@@ -43,7 +40,6 @@ def get_empty_pos(existing_units):
         if not occupied:
             return pos
 
-
 def get_unit_at(pos, units_list):
     for u in units_list:
         if hasattr(u, 'pos'):
@@ -53,7 +49,6 @@ def get_unit_at(pos, units_list):
             if u["pos"] == pos:
                 return u
     return None
-
 
 def move_towards(start, target):
     dx, dy = target[0] - start[0], target[1] - start[1]
