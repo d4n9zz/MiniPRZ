@@ -3,6 +3,7 @@ import math
 import random
 from settings import TILE_SIZE, HIT_EFFECT_COLORS, DEATH_EFFECT_COLORS
 
+
 class DamageNumber:
     def __init__(self, pos, value):
         self.pos = pos
@@ -36,6 +37,7 @@ class DamageNumber:
         damage_surf.set_alpha(alpha)
         screen.blit(damage_surf, (px - 30, py - 20))
 
+
 class BattleEffect:
     def __init__(self, pos):
         self.pos = pos
@@ -56,6 +58,7 @@ class BattleEffect:
         color = HIT_EFFECT_COLORS[self.color_index]
         pygame.draw.circle(screen, color, (int(px), int(py)),
                            int(TILE_SIZE // 3 + 8 + pulse), 4)
+
 
 class DeathEffect:
     def __init__(self, pos):

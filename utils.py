@@ -3,16 +3,18 @@ import os
 import random
 from settings import FONT_FALLBACKS, TILE_SIZE, COLS, ROWS
 
+
 def load_font(size):
     for name in FONT_FALLBACKS:
         try:
             font_test = pygame.font.SysFont(name, size)
-            test = font_test.render("▶", True, (255, 255, 255))
+            test = font_test.render(">", True, (255, 255, 255))
             if test.get_width() > 0:
                 return font_test
         except pygame.error:
             continue
     return pygame.font.SysFont(None, size)
+
 
 def load_unit_image(filepath):
     try:
@@ -20,9 +22,9 @@ def load_unit_image(filepath):
             img = pygame.image.load(filepath).convert_alpha()
             img = pygame.transform.smoothscale(img, (TILE_SIZE - 10, TILE_SIZE - 10))
             return img
-    except pygame.error as e:
-        print(f"Не удалось загрузить {filepath}: {e}")
-    return None
+    except pygame.error:
+        return None
+
 
 def get_empty_pos(existing_units):
     while True:
@@ -40,6 +42,7 @@ def get_empty_pos(existing_units):
         if not occupied:
             return pos
 
+
 def get_unit_at(pos, units_list):
     for u in units_list:
         if hasattr(u, 'pos'):
@@ -49,6 +52,7 @@ def get_unit_at(pos, units_list):
             if u["pos"] == pos:
                 return u
     return None
+
 
 def move_towards(start, target):
     dx, dy = target[0] - start[0], target[1] - start[1]

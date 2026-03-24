@@ -1,5 +1,7 @@
 import pygame
 import os
+
+
 def _find_image_file(base_path):
     if base_path is None:
         return None
@@ -11,10 +13,13 @@ def _find_image_file(base_path):
     if os.path.exists(base_path):
         return base_path
     return None
+
+
 class BackgroundManager:
     def __init__(self):
         self.current_bg = None
         self.bg_type = None
+
     def load_background(self, bg_key, backgrounds_dict):
         base_path = backgrounds_dict.get(bg_key)
         if base_path is None or base_path == '':
@@ -41,6 +46,7 @@ class BackgroundManager:
             print(f"⚠️ Ошибка загрузки фона: {e}")
             self.bg_type = 'gradient'
             return False
+
     def draw(self, screen, width, height):
         if self.bg_type == 'gradient':
             return False
@@ -50,5 +56,6 @@ class BackgroundManager:
                 screen.blit(bg_scaled, (0, 0))
                 return True
         return False
+
     def cleanup(self):
         self.current_bg = None

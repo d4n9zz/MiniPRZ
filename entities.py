@@ -67,7 +67,6 @@ def bot_step(bot_unit, player_units, bot_units, damage_callback, effect_callback
             if not p_unit.is_alive():
                 death_callback(p_unit.pos)
             return
-
     if player_units:
         target = random.choice(player_units).pos
         new_pos = move_towards(bot_unit.pos, target)

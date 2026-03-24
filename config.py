@@ -4,7 +4,7 @@ import os
 CONFIG_FILE = "config.json"
 
 DEFAULT_CONFIG = {
-    "music_volume": 0.5,
+    "music_volume": 1.0,
     "background": "default",
     "snow_enabled": True
 }

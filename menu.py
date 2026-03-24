@@ -9,9 +9,12 @@ from settings import (
     WIDTH, HEIGHT, MENU_BG_TOP, MENU_BG_BOTTOM,
     MENU_BTN_BLUE, MENU_BTN_BLUE_HOVER, MENU_BTN_RED, MENU_BTN_RED_HOVER,
     UI_TEXT, UI_BG, UI_BORDER, BG_OVERLAY_ALPHA,
-    CURRENT_BACKGROUND, CUSTOM_BACKGROUNDS, BACKGROUND_KEYS, GAME_VERSION
+    CUSTOM_BACKGROUNDS, BACKGROUND_KEYS, GAME_VERSION
 )
+
 bg_manager = BackgroundManager()
+
+
 def settings_menu(screen, clock):
     from settings import font
     running_settings = True
@@ -106,9 +109,11 @@ def settings_menu(screen, clock):
                     running_settings = False
         pygame.display.update()
         clock.tick(60)
+
+
 def main_menu(screen, clock):
     from settings import font, big_font, small_font
-    bg_manager.load_background(CURRENT_BACKGROUND, CUSTOM_BACKGROUNDS)
+    bg_manager.load_background(settings.CURRENT_BACKGROUND, CUSTOM_BACKGROUNDS)
     play_menu()
     running_menu = True
     snowflakes = []
