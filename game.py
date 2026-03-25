@@ -4,11 +4,12 @@ from settings import (
     WIDTH, HEIGHT, TILE_SIZE, FIELD_HEIGHT, VISIBILITY_RADIUS,
     TURN_TIME, BG_TOP, BG_BOTTOM, GRID_COLOR, GRID_BORDER,
     FOG_UNEXPLORED, FOG_EXPLORED_NO_VIS, PLAYER_HIGHLIGHT,
-    COLS, ROWS, BOT_GLOW
+    COLS, ROWS, BOT_GLOW, DEBUG_TOGGLE_KEY, DEBUG_FOG_KEY,
+    DEBUG_HEAL_KEY, DEBUG_INSTANT_WIN_KEY, DEBUG_SKIP_TURN_KEY
 )
 from entities import create_units, bot_step
 from effects import DamageNumber, BattleEffect, DeathEffect
-from ui import draw_interface, draw_menu_button, draw_pause_menu
+from ui import draw_interface, draw_menu_button, draw_pause_menu, draw_debug_button, draw_debug_overlay
 from music import play_game, fade_music_volume
 
 
@@ -42,6 +43,13 @@ class Game:
         self.music_fade_target = 1.0
         self.music_fade_current = 1.0
         self.music_fade_speed = 0.03
+        self.fog_unexplored_surf = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+        self.fog_unexplored_surf.fill(FOG_UNEXPLORED)
+        self.fog_explored_surf = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+        self.fog_explored_surf.fill(FOG_EXPLORED_NO_VIS)
+        self.debug_mode = False
+        self.debug_fog_override = False
+        self.debug_btn_rect = None
 
     def _set_pause_state(self, state):
         if state == self.paused:
@@ -89,23 +97,21 @@ class Game:
                 pygame.draw.rect(self.screen, GRID_BORDER, rect, 1)
 
     def _draw_fog_of_war(self, visible):
+        if self.debug_fog_override:
+            return
         for y in range(ROWS):
             for x in range(COLS):
                 tile_pos = (x, y)
                 tile_rect = pygame.Rect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE)
                 if tile_pos not in self.explored_tiles:
-                    fog_overlay = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
-                    fog_overlay.fill(FOG_UNEXPLORED)
-                    self.screen.blit(fog_overlay, tile_rect.topleft)
+                    self.screen.blit(self.fog_unexplored_surf, tile_rect.topleft)
                 elif tile_pos not in visible:
-                    fog_overlay = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
-                    fog_overlay.fill(FOG_EXPLORED_NO_VIS)
-                    self.screen.blit(fog_overlay, tile_rect.topleft)
+                    self.screen.blit(self.fog_explored_surf, tile_rect.topleft)
 
     def _draw_units(self, visible):
         from settings import player_unit_imgs, bot_unit_imgs
         for unit in self.player_units + self.bot_units:
-            if tuple(unit.pos) not in visible and not unit.is_player:
+            if tuple(unit.pos) not in visible and not unit.is_player and not self.debug_fog_override:
                 continue
             unit_img_dict = player_unit_imgs if unit.is_player else bot_unit_imgs
             unit_img = unit_img_dict.get(unit.unit_type)
@@ -127,7 +133,7 @@ class Game:
                     self.screen.blit(highlight_surf,
                                      (unit.px - TILE_SIZE // 2 - 10, unit.py - TILE_SIZE // 2 - 10))
 
-    def _handle_input(self, interface_btn, menu_btn_rect):
+    def _handle_input(self, interface_btn, menu_btn_rect, debug_btn_rect):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return False
@@ -139,6 +145,19 @@ class Game:
                         self._reset_game()
                     elif self.current_turn == "player" and not self.paused:
                         self._end_player_turn()
+                if event.key == DEBUG_TOGGLE_KEY:
+                    self.debug_mode = not self.debug_mode
+                if event.key == DEBUG_FOG_KEY:
+                    self.debug_fog_override = not self.debug_fog_override
+                if event.key == DEBUG_HEAL_KEY and self.current_turn == "player":
+                    for u in self.player_units:
+                        u.hp = u.max_hp
+                if event.key == DEBUG_INSTANT_WIN_KEY:
+                    self.bot_units = []
+                    self.game_over = True
+                    self.winner = "🏆 DEBUG WIN 🏆"
+                if event.key == DEBUG_SKIP_TURN_KEY and self.current_turn == "player":
+                    self._end_player_turn()
                 if self.current_turn == "player" and not self.game_over and not self.paused:
                     if event.key == pygame.K_1 and len(self.player_units) > 0:
                         self.selected_unit = self.player_units[0]
@@ -150,6 +169,9 @@ class Game:
                         self.selected_unit = self.player_units[3]
             if event.type == pygame.MOUSEBUTTONDOWN and not self.game_over:
                 mouse_x, mouse_y = pygame.mouse.get_pos()
+                if debug_btn_rect.collidepoint(mouse_x, mouse_y):
+                    self.debug_mode = not self.debug_mode
+                    continue
                 if menu_btn_rect.collidepoint(mouse_x, mouse_y):
                     self._set_pause_state(True)
                     continue
@@ -220,7 +242,8 @@ class Game:
                 self.game_over = True
                 self.winner = "💀 YOU LOSE 💀"
         if self.current_turn == "player" and not self.game_over:
-            if pygame.time.get_ticks() - self.turn_timer_start >= TURN_TIME:
+            elapsed = pygame.time.get_ticks() - self.turn_timer_start - self.total_paused_time
+            if elapsed >= TURN_TIME:
                 self._end_player_turn()
         if self.current_turn == "bot" and not self.game_over:
             if pygame.time.get_ticks() >= self.bot_wait_until and self.bot_action_index < len(self.bot_units):
@@ -238,6 +261,7 @@ class Game:
                 else:
                     self.current_turn = "player"
                     self.turn_timer_start = pygame.time.get_ticks()
+                    self.total_paused_time = 0
                     for u in self.player_units:
                         u.has_moved = False
         self.player_units = [u for u in self.player_units if u.is_alive()]
@@ -289,11 +313,14 @@ class Game:
                 self.paused, self.pause_start_time, self.total_paused_time
             )
             menu_btn_rect = draw_menu_button(self.screen)
+            debug_btn_rect = draw_debug_button(self.screen, self.debug_mode)
             if self.paused:
                 self._draw_pause_menu()
             if self.game_over:
                 self._draw_game_over()
-            running = self._handle_input(interface_btn, menu_btn_rect)
+            if self.debug_mode:
+                draw_debug_overlay(self.screen, self.clock, visible, self.player_units, self.bot_units)
+            running = self._handle_input(interface_btn, menu_btn_rect, debug_btn_rect)
             self._update_game()
             self._update_music_fade()
             pygame.display.update()

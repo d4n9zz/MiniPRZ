@@ -28,7 +28,6 @@ def main():
         game = Game(screen, clock)
         if not game.run():
             break
-
     pygame.quit()
     sys.exit()
 

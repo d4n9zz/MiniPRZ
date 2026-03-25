@@ -2,7 +2,8 @@ import pygame
 from settings import (
     UI_BG, UI_BORDER, UI_TEXT, UI_BUTTON_NORMAL,
     UI_BUTTON_HOVER, UI_BUTTON_SHADOW, TIMER_SAFE, TIMER_WARNING, TIMER_DANGER,
-    FIELD_HEIGHT, WIDTH, INTERFACE_HEIGHT, MENU_BTN_BLUE, MENU_BTN_BLUE_HOVER
+    FIELD_HEIGHT, WIDTH, INTERFACE_HEIGHT, MENU_BTN_BLUE, MENU_BTN_BLUE_HOVER,
+    DEBUG_BTN_OFF, DEBUG_BTN_ON, DEBUG_TEXT_COLOR, DEBUG_BG_COLOR
 )
 
 
@@ -23,6 +24,31 @@ def draw_menu_button(screen):
     pygame.draw.rect(screen, color, btn_rect, border_radius=8)
     pygame.draw.rect(screen, (255, 255, 255), btn_rect, 2, border_radius=8)
     pygame.draw.rect(screen, (255, 255, 255), btn_rect, 1, border_radius=8)
+    if text_surf:
+        screen.blit(text_surf, text_surf.get_rect(center=btn_rect.center))
+    return btn_rect
+
+
+def draw_debug_button(screen, is_active):
+    from settings import small_font
+    text_surf = small_font.render("DBG", True, UI_TEXT) if small_font else None
+    padding = 8
+    if text_surf:
+        btn_w = text_surf.get_width() + padding * 2
+        btn_h = text_surf.get_height() + padding * 2
+    else:
+        btn_w = 40
+        btn_h = 40
+    btn_x = WIDTH - btn_w - 10
+    btn_y = 10
+    btn_rect = pygame.Rect(btn_x, btn_y, btn_w, btn_h)
+    mouse_x, mouse_y = pygame.mouse.get_pos()
+    base_color = DEBUG_BTN_ON if is_active else DEBUG_BTN_OFF
+    color = UI_BUTTON_HOVER if btn_rect.collidepoint(mouse_x, mouse_y) else base_color
+    pygame.draw.rect(screen, UI_BUTTON_SHADOW, btn_rect.move(2, 2), border_radius=8)
+    pygame.draw.rect(screen, color, btn_rect, border_radius=8)
+    border_col = (255, 255, 255) if is_active else (150, 150, 150)
+    pygame.draw.rect(screen, border_col, btn_rect, 2, border_radius=8)
     if text_surf:
         screen.blit(text_surf, text_surf.get_rect(center=btn_rect.center))
     return btn_rect
@@ -114,7 +140,9 @@ def _draw_timer(screen, turn_timer_start, turn_time, small_font,
     paused_duration = 0
     if paused:
         paused_duration = interface_time - pause_start_time
-    total_pause = total_paused_time + paused_duration
+        total_pause = total_paused_time + paused_duration
+    else:
+        total_pause = total_paused_time
     effective_time = interface_time - turn_timer_start - total_pause
     remaining = max(0, turn_time - effective_time)
     ratio = remaining / turn_time if turn_time > 0 else 0
@@ -135,3 +163,54 @@ def _draw_timer(screen, turn_timer_start, turn_time, small_font,
         time_y = bar_y + bar_h // 2 - time_text.get_height() // 2
         screen.blit(bg_surf, (bar_x - time_text.get_width() - 20, time_y))
         screen.blit(time_text, (bar_x - time_text.get_width() - 16, time_y))
+
+
+def draw_debug_overlay(screen, clock, visible_tiles, player_units, bot_units):
+    from settings import small_font, TILE_SIZE, COLS, ROWS
+    if not small_font:
+        return
+    fps = int(clock.get_fps())
+    mouse_x, mouse_y = pygame.mouse.get_pos()
+    grid_x = mouse_x // TILE_SIZE
+    grid_y = mouse_y // TILE_SIZE
+    info_lines = [
+        f"FPS: {fps}",
+        f"Mouse: {mouse_x}, {mouse_y}",
+        f"Grid: {grid_x}, {grid_y}",
+        f"Visible Tiles: {len(visible_tiles)}",
+        f"Player Units: {len(player_units)}",
+        f"Bot Units: {len(bot_units)}"
+    ]
+    y_offset = 10
+    for line in info_lines:
+        text_surf = small_font.render(line, True, DEBUG_TEXT_COLOR)
+        bg_surf = pygame.Surface((text_surf.get_width() + 4, text_surf.get_height() + 4), pygame.SRCALPHA)
+        bg_surf.fill(DEBUG_BG_COLOR)
+        screen.blit(bg_surf, (10, y_offset))
+        screen.blit(text_surf, (12, y_offset + 2))
+        y_offset += text_surf.get_height() + 4
+    if 0 <= grid_x < COLS and 0 <= grid_y < ROWS:
+        from utils import get_unit_at
+        unit = get_unit_at([grid_x, grid_y], player_units + bot_units)
+        if unit:
+            unit_info = [
+                f"Unit: {unit.name}",
+                f"HP: {unit.hp}/{unit.max_hp}",
+                f"Type: {unit.unit_type}",
+                f"Owner: {'Player' if unit.is_player else 'Bot'}"
+            ]
+            box_h = len(unit_info) * (small_font.get_height() + 4) + 8
+            box_w = 150
+            box_x = mouse_x + 10
+            box_y = mouse_y + 10
+            if box_x + box_w > WIDTH:
+                box_x = mouse_x - box_w - 10
+            if box_y + box_h > FIELD_HEIGHT:
+                box_y = mouse_y - box_h - 10
+            panel_surf = pygame.Surface((box_w, box_h), pygame.SRCALPHA)
+            panel_surf.fill((0, 0, 0, 200))
+            screen.blit(panel_surf, (box_x, box_y))
+            pygame.draw.rect(screen, DEBUG_TEXT_COLOR, (box_x, box_y, box_w, box_h), 1)
+            for i, line in enumerate(unit_info):
+                text_surf = small_font.render(line, True, DEBUG_TEXT_COLOR)
+                screen.blit(text_surf, (box_x + 4, box_y + 4 + i * (small_font.get_height() + 4)))
