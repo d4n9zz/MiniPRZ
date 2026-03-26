@@ -5,6 +5,8 @@ from settings import TILE_SIZE, HIT_EFFECT_COLORS, DEATH_EFFECT_COLORS
 
 
 class DamageNumber:
+    __slots__ = ['pos', 'value', 'y_offset', 'timer']
+
     def __init__(self, pos, value):
         self.pos = pos
         self.value = value
@@ -39,6 +41,8 @@ class DamageNumber:
 
 
 class BattleEffect:
+    __slots__ = ['pos', 'timer', 'color_index']
+
     def __init__(self, pos):
         self.pos = pos
         self.timer = 10
@@ -61,6 +65,8 @@ class BattleEffect:
 
 
 class DeathEffect:
+    __slots__ = ['pos', 'timer', 'particles', 'expansion']
+
     def __init__(self, pos):
         self.pos = pos
         self.timer = 30

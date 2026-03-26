@@ -29,7 +29,7 @@ def draw_menu_button(screen):
     return btn_rect
 
 
-def draw_debug_button(screen, is_active):
+def draw_debug_button(screen, is_active, menu_btn_rect=None):
     from settings import small_font
     text_surf = small_font.render("DBG", True, UI_TEXT) if small_font else None
     padding = 8
@@ -39,8 +39,14 @@ def draw_debug_button(screen, is_active):
     else:
         btn_w = 40
         btn_h = 40
-    btn_x = WIDTH - btn_w - 10
-    btn_y = 10
+
+    if menu_btn_rect:
+        btn_x = menu_btn_rect.x
+        btn_y = menu_btn_rect.bottom + 10
+    else:
+        btn_x = WIDTH - btn_w - 10
+        btn_y = 10
+
     btn_rect = pygame.Rect(btn_x, btn_y, btn_w, btn_h)
     mouse_x, mouse_y = pygame.mouse.get_pos()
     base_color = DEBUG_BTN_ON if is_active else DEBUG_BTN_OFF
@@ -137,7 +143,6 @@ def draw_interface(screen, current_turn, player_units, bot_units,
 def _draw_timer(screen, turn_timer_start, turn_time, small_font,
                 paused, pause_start_time, total_paused_time):
     interface_time = pygame.time.get_ticks()
-    paused_duration = 0
     if paused:
         paused_duration = interface_time - pause_start_time
         total_pause = total_paused_time + paused_duration

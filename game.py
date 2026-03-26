@@ -14,11 +14,45 @@ from music import play_game, fade_music_volume
 
 
 class Game:
+    __slots__ = [
+        'screen', 'clock', 'player_units', 'bot_units', 'selected_unit',
+        'current_turn', 'game_over', 'winner', 'explored_tiles',
+        'turn_timer_start', 'damage_numbers', 'battle_effects',
+        'death_effects', 'bot_action_index', 'bot_wait_until',
+        'return_to_menu', 'paused', 'pause_resume_btn', 'pause_menu_btn',
+        'total_paused_time', 'pause_start_time', 'music_fade_target',
+        'music_fade_current', 'music_fade_speed', 'fog_unexplored_surf',
+        'fog_explored_surf', 'debug_mode', 'debug_fog_override',
+        'debug_btn_rect', 'bg_surface', 'grid_surface'
+    ]
+
     def __init__(self, screen, clock):
         self.screen = screen
         self.clock = clock
         play_game()
+        self._create_static_surfaces()
         self._reset_game()
+
+    def _create_static_surfaces(self):
+        self.grid_surface = pygame.Surface((WIDTH, FIELD_HEIGHT), pygame.SRCALPHA)
+        self._draw_grid_static()
+        self.bg_surface = pygame.Surface((WIDTH, FIELD_HEIGHT))
+        self._draw_background_static()
+
+    def _draw_grid_static(self):
+        for y in range(ROWS):
+            for x in range(COLS):
+                rect = pygame.Rect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE)
+                pygame.draw.rect(self.grid_surface, GRID_COLOR, rect)
+                pygame.draw.rect(self.grid_surface, GRID_BORDER, rect, 1)
+
+    def _draw_background_static(self):
+        for y in range(FIELD_HEIGHT):
+            ratio = y / FIELD_HEIGHT
+            r = int(BG_TOP[0] * (1 - ratio) + BG_BOTTOM[0] * ratio)
+            g = int(BG_TOP[1] * (1 - ratio) + BG_BOTTOM[1] * ratio)
+            b = int(BG_TOP[2] * (1 - ratio) + BG_BOTTOM[2] * ratio)
+            pygame.draw.line(self.bg_surface, (r, g, b), (0, y), (WIDTH, y))
 
     def _reset_game(self):
         self.player_units = create_units(2, [], is_player=True)
@@ -81,21 +115,6 @@ class Game:
                             visible.add((nx, ny))
         return visible
 
-    def _draw_background(self):
-        for y in range(FIELD_HEIGHT):
-            ratio = y / FIELD_HEIGHT
-            r = int(BG_TOP[0] * (1 - ratio) + BG_BOTTOM[0] * ratio)
-            g = int(BG_TOP[1] * (1 - ratio) + BG_BOTTOM[1] * ratio)
-            b = int(BG_TOP[2] * (1 - ratio) + BG_BOTTOM[2] * ratio)
-            pygame.draw.line(self.screen, (r, g, b), (0, y), (WIDTH, y))
-
-    def _draw_grid(self):
-        for y in range(ROWS):
-            for x in range(COLS):
-                rect = pygame.Rect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE)
-                pygame.draw.rect(self.screen, GRID_COLOR, rect)
-                pygame.draw.rect(self.screen, GRID_BORDER, rect, 1)
-
     def _draw_fog_of_war(self, visible):
         if self.debug_fog_override:
             return
@@ -155,7 +174,7 @@ class Game:
                 if event.key == DEBUG_INSTANT_WIN_KEY:
                     self.bot_units = []
                     self.game_over = True
-                    self.winner = "🏆 DEBUG WIN 🏆"
+                    self.winner = "🏆 DEBUG WIN"
                 if event.key == DEBUG_SKIP_TURN_KEY and self.current_turn == "player":
                     self._end_player_turn()
                 if self.current_turn == "player" and not self.game_over and not self.paused:
@@ -297,8 +316,8 @@ class Game:
         while running:
             visible = self._get_visible_tiles()
             self.explored_tiles.update(visible)
-            self._draw_background()
-            self._draw_grid()
+            self.screen.blit(self.bg_surface, (0, 0))
+            self.screen.blit(self.grid_surface, (0, 0))
             self._draw_units(visible)
             for dmg in self.damage_numbers:
                 dmg.draw(self.screen, visible)
@@ -313,7 +332,7 @@ class Game:
                 self.paused, self.pause_start_time, self.total_paused_time
             )
             menu_btn_rect = draw_menu_button(self.screen)
-            debug_btn_rect = draw_debug_button(self.screen, self.debug_mode)
+            debug_btn_rect = draw_debug_button(self.screen, self.debug_mode, menu_btn_rect)
             if self.paused:
                 self._draw_pause_menu()
             if self.game_over:

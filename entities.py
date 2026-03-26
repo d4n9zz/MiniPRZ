@@ -4,6 +4,12 @@ from utils import move_towards, get_unit_at, get_empty_pos, COLS, ROWS
 
 
 class Unit:
+    __slots__ = [
+        'pos', 'unit_type', 'name', 'hp', 'max_hp',
+        'damage_range', 'color', 'speed', 'is_player',
+        'move_path', 'has_moved', 'px', 'py'
+    ]
+
     def __init__(self, pos, unit_type='pawn', is_player=False):
         type_data = settings.UNIT_TYPES.get(unit_type, settings.UNIT_TYPES['pawn'])
         self.pos = list(pos)
@@ -65,7 +71,6 @@ def bot_step(bot_unit, player_units, bot_units, damage_callback, effect_callback
         dy = abs(bot_unit.pos[1] - p_unit.pos[1])
         if dx <= 1 and dy <= 1 and (dx + dy) != 0:
             adjacent_enemies.append(p_unit)
-
     if adjacent_enemies:
         max_dmg = bot_unit.get_max_attack_damage()
         kill_target = None

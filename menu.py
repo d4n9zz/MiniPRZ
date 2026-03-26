@@ -1,5 +1,6 @@
 import random
 import sys
+import webbrowser
 import pygame
 import settings
 from background import BackgroundManager
@@ -116,6 +117,8 @@ def main_menu(screen, clock):
     bg_manager.load_background(settings.CURRENT_BACKGROUND, CUSTOM_BACKGROUNDS)
     play_menu()
     running_menu = True
+    menu_state = "main"
+    online_msg_alpha = 0
     snowflakes = []
     for _ in range(100):
         snowflakes.append({
@@ -125,6 +128,9 @@ def main_menu(screen, clock):
             'speed': random.uniform(0.5, 2.0),
             'wind': random.uniform(-0.3, 0.3)
         })
+    github_rect = None
+    if settings.github_icon_img:
+        github_rect = pygame.Rect(WIDTH - 74, 10, 64, 64)
     while running_menu:
         bg_manager.draw(screen, WIDTH, HEIGHT)
         if settings.SNOW_ENABLED:
@@ -136,7 +142,7 @@ def main_menu(screen, clock):
                 if flake['y'] > HEIGHT:
                     flake['y'] = -5
                     flake['x'] = random.randint(0, WIDTH)
-                if flake['x'] > WIDTH:
+                elif flake['x'] > WIDTH:
                     flake['x'] = 0
                 elif flake['x'] < 0:
                     flake['x'] = WIDTH
@@ -153,51 +159,110 @@ def main_menu(screen, clock):
             title_x = WIDTH // 2 - title_text.get_width() // 2
             title_y = 100
             screen.blit(title_text, (title_x, title_y))
+        if online_msg_alpha > 0:
+            if small_font:
+                msg_surf = small_font.render("IN DEVELOPMENT", True, (255, 100, 100))
+                msg_x = WIDTH // 2 - msg_surf.get_width() // 2
+                msg_y = 160
+                msg_surf.set_alpha(online_msg_alpha)
+                screen.blit(msg_surf, (msg_x, msg_y))
+            online_msg_alpha -= 5
+            if online_msg_alpha < 0:
+                online_msg_alpha = 0
         if small_font:
             version_text = small_font.render(f"v{GAME_VERSION}", True, UI_TEXT)
             screen.blit(version_text, (WIDTH - version_text.get_width() - 10, HEIGHT - 30))
+        if settings.github_icon_img and github_rect:
+            screen.blit(settings.github_icon_img, github_rect)
         mouse_x, mouse_y = pygame.mouse.get_pos()
-        button_width, button_height = 260, 60
-        buttons_config = [
-            (WIDTH // 2 - button_width // 2, HEIGHT // 2 - button_height, "▶ PLAY",
-             MENU_BTN_BLUE, MENU_BTN_BLUE_HOVER, "play"),
-            (WIDTH // 2 - button_width // 2, HEIGHT // 2, "⚙ SETTINGS",
-             MENU_BTN_BLUE, MENU_BTN_BLUE_HOVER, "settings"),
-            (WIDTH // 2 - button_width // 2, HEIGHT // 2 + button_height, "✕ EXIT",
-             MENU_BTN_RED, MENU_BTN_RED_HOVER, "exit"),
-        ]
         buttons_rects = []
-        for x, y, text, color, hover_color, action in buttons_config:
-            btn_rect = pygame.Rect(x, y, button_width, button_height)
-            buttons_rects.append((btn_rect, action))
-            current_color = hover_color if btn_rect.collidepoint(mouse_x, mouse_y) else color
-            pygame.draw.rect(screen, (10, 12, 20), btn_rect.move(4, 4), border_radius=12)
-            pygame.draw.rect(screen, current_color, btn_rect, border_radius=12)
-            pygame.draw.rect(screen, (255, 255, 255), btn_rect, 2, border_radius=12)
-            if font:
-                text_surface = font.render(text, True, UI_TEXT)
-                screen.blit(text_surface, text_surface.get_rect(center=btn_rect.center))
+        if menu_state == "main":
+            button_width, button_height = 260, 60
+            buttons_config = [
+                (WIDTH // 2 - button_width // 2, HEIGHT // 2 - button_height * 1.5, "▶ PLAY",
+                 MENU_BTN_BLUE, MENU_BTN_BLUE_HOVER, "play"),
+                (WIDTH // 2 - button_width // 2, HEIGHT // 2 - button_height * 0.5, "🌐 ONLINE",
+                 MENU_BTN_BLUE, MENU_BTN_BLUE_HOVER, "online"),
+                (WIDTH // 2 - button_width // 2, HEIGHT // 2 + button_height * 0.5, "⚙ SETTINGS",
+                 MENU_BTN_BLUE, MENU_BTN_BLUE_HOVER, "settings"),
+                (WIDTH // 2 - button_width // 2, HEIGHT // 2 + button_height * 1.5, "✕ EXIT",
+                 MENU_BTN_RED, MENU_BTN_RED_HOVER, "exit"),
+            ]
+            for x, y, text, color, hover_color, action in buttons_config:
+                btn_rect = pygame.Rect(x, y, button_width, button_height)
+                buttons_rects.append((btn_rect, action))
+                current_color = hover_color if btn_rect.collidepoint(mouse_x, mouse_y) else color
+                pygame.draw.rect(screen, (10, 12, 20), btn_rect.move(4, 4), border_radius=12)
+                pygame.draw.rect(screen, current_color, btn_rect, border_radius=12)
+                pygame.draw.rect(screen, (255, 255, 255), btn_rect, 2, border_radius=12)
+                if font:
+                    text_surface = font.render(text, True, UI_TEXT)
+                    screen.blit(text_surface, text_surface.get_rect(center=btn_rect.center))
+        elif menu_state == "play_submenu":
+            btn_w, btn_h = 200, 80
+            gap = 40
+            total_w = btn_w * 2 + gap
+            start_x = WIDTH // 2 - total_w // 2
+            start_y = HEIGHT // 2 - btn_h // 2
+            btn_bot = pygame.Rect(start_x, start_y, btn_w, btn_h)
+            btn_rogue = pygame.Rect(start_x + btn_w + gap, start_y, btn_w, btn_h)
+            btn_back = pygame.Rect(WIDTH // 2 - 100, start_y + btn_h + 40, 200, 50)
+            buttons_rects = [
+                (btn_bot, "bot"),
+                (btn_rogue, "rogue"),
+                (btn_back, "back")
+            ]
+            btn_texts = ["⚔️ Bot", "❓ ???", "◀ BACK"]
+            btn_colors = [MENU_BTN_BLUE, MENU_BTN_BLUE, MENU_BTN_RED]
+            btn_hovers = [MENU_BTN_BLUE_HOVER, MENU_BTN_BLUE_HOVER, MENU_BTN_RED_HOVER]
+            for i, (btn_rect, action) in enumerate(buttons_rects):
+                color = btn_colors[i]
+                hover_color = btn_hovers[i]
+                current_color = hover_color if btn_rect.collidepoint(mouse_x, mouse_y) else color
+                pygame.draw.rect(screen, (10, 12, 20), btn_rect.move(4, 4), border_radius=12)
+                pygame.draw.rect(screen, current_color, btn_rect, border_radius=12)
+                pygame.draw.rect(screen, (255, 255, 255), btn_rect, 2, border_radius=12)
+                if font:
+                    text_surface = font.render(btn_texts[i], True, UI_TEXT)
+                    screen.blit(text_surface, text_surface.get_rect(center=btn_rect.center))
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 bg_manager.cleanup()
                 pygame.quit()
                 sys.exit()
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if github_rect and github_rect.collidepoint(mouse_x, mouse_y):
+                    webbrowser.open(settings.GITHUB_URL)
+                    continue
                 for btn_rect, action in buttons_rects:
                     if btn_rect.collidepoint(mouse_x, mouse_y):
-                        if action == "play":
-                            bg_manager.cleanup()
-                            return True
-                        elif action == "settings":
-                            settings_menu(screen, clock)
-                        elif action == "exit":
-                            bg_manager.cleanup()
-                            pygame.quit()
-                            sys.exit()
+                        if menu_state == "main":
+                            if action == "play":
+                                menu_state = "play_submenu"
+                            elif action == "online":
+                                online_msg_alpha = 255
+                            elif action == "settings":
+                                settings_menu(screen, clock)
+                            elif action == "exit":
+                                bg_manager.cleanup()
+                                return False
+                        elif menu_state == "play_submenu":
+                            if action == "bot":
+                                bg_manager.cleanup()
+                                return True
+                            elif action == "rogue":
+                                online_msg_alpha = 255
+                            elif action == "back":
+                                menu_state = "main"
             if event.type == pygame.MOUSEMOTION:
-                if any(btn_rect.collidepoint(mouse_x, mouse_y) for btn_rect, _ in buttons_rects):
+                cursor_set = False
+                if github_rect and github_rect.collidepoint(mouse_x, mouse_y):
                     pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
-                else:
+                    cursor_set = True
+                if not cursor_set and any(btn_rect.collidepoint(mouse_x, mouse_y) for btn_rect, _ in buttons_rects):
+                    pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
+                    cursor_set = True
+                if not cursor_set:
                     pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
         pygame.display.update()
         clock.tick(60)

@@ -16,6 +16,8 @@ def _find_image_file(base_path):
 
 
 class BackgroundManager:
+    __slots__ = ['current_bg', 'bg_type']
+
     def __init__(self):
         self.current_bg = None
         self.bg_type = None
@@ -28,7 +30,6 @@ class BackgroundManager:
             return True
         path = _find_image_file(base_path)
         if path is None:
-            print(f"⚠️ Фон не найден: {base_path} (.png/.jpg)")
             self.bg_type = 'gradient'
             return False
         try:
@@ -36,14 +37,11 @@ class BackgroundManager:
             if ext in ['.png', '.jpg', '.jpeg', '.bmp']:
                 self.current_bg = pygame.image.load(path).convert()
                 self.bg_type = 'image'
-                print(f"✓ Загружен фон: {path}")
                 return True
             else:
-                print(f"⚠️ Не поддерживаемый формат: {ext}")
                 self.bg_type = 'gradient'
                 return False
-        except Exception as e:
-            print(f"⚠️ Ошибка загрузки фона: {e}")
+        except Exception:
             self.bg_type = 'gradient'
             return False
 

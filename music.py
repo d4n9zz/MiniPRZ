@@ -8,8 +8,8 @@ def play_menu():
         pygame.mixer.music.load(settings.MUSIC_MENU)
         pygame.mixer.music.play(-1)
         pygame.mixer.music.set_volume(settings.MUSIC_VOLUME)
-    except Exception as e:
-        print(f"Music error: {e}")
+    except Exception:
+        pass
 
 
 def play_game():
@@ -18,15 +18,14 @@ def play_game():
         pygame.mixer.music.load(settings.MUSIC_GAME)
         pygame.mixer.music.play(-1)
         pygame.mixer.music.set_volume(settings.MUSIC_VOLUME)
-    except Exception as e:
-        print(f"Music error: {e}")
+    except Exception:
+        pass
 
 
 def fade_music_volume(target_volume):
     try:
-        current_volume = pygame.mixer.music.get_volume()
         base_volume = settings.MUSIC_VOLUME
         actual_volume = base_volume * target_volume
         pygame.mixer.music.set_volume(actual_volume)
-    except Exception as e:
-        print(f"Music fade error: {e}")
+    except Exception:
+        pass
