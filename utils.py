@@ -8,12 +8,15 @@ def load_font(size):
     for name in FONT_FALLBACKS:
         try:
             font_test = pygame.font.SysFont(name, size)
-            test = font_test.render(">", True, (255, 255, 255))
-            if test.get_width() > 0:
+            test_cyrillic = font_test.render("АБВ", True, (255, 255, 255))
+            if test_cyrillic.get_width() > 0:
                 return font_test
         except pygame.error:
             continue
-    return pygame.font.SysFont(None, size)
+    try:
+        return pygame.font.SysFont("freesansbold", size)
+    except pygame.error:
+        return pygame.font.Font(None, size)
 
 
 def load_unit_image(filepath):

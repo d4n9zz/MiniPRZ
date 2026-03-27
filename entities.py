@@ -4,10 +4,11 @@ from utils import move_towards, get_unit_at, get_empty_pos, COLS, ROWS
 
 
 class Unit:
-    __slots__ = [
+    slots = [
         'pos', 'unit_type', 'name', 'hp', 'max_hp',
         'damage_range', 'color', 'speed', 'is_player',
-        'move_path', 'has_moved', 'px', 'py'
+        'move_path', 'has_moved', 'px', 'py',
+        'shake_timer', 'shake_offset'
     ]
 
     def __init__(self, pos, unit_type='pawn', is_player=False):
@@ -25,6 +26,8 @@ class Unit:
         self.has_moved = False
         self.px = self.pos[0] * settings.TILE_SIZE + settings.TILE_SIZE // 2
         self.py = self.pos[1] * settings.TILE_SIZE + settings.TILE_SIZE // 2
+        self.shake_timer = 0
+        self.shake_offset = [0, 0]
 
     def is_alive(self):
         return self.hp > 0
@@ -34,6 +37,22 @@ class Unit:
 
     def get_max_attack_damage(self):
         return self.damage_range[1]
+
+    def start_shake(self):
+        self.shake_timer = settings.SHAKE_DURATION
+
+    def update_shake(self):
+        if self.shake_timer > 0:
+            self.shake_timer -= 1
+            if self.shake_timer > 0:
+                self.shake_offset[0] = random.randint(
+                    -settings.SHAKE_INTENSITY, settings.SHAKE_INTENSITY
+                )
+                self.shake_offset[1] = random.randint(
+                    -settings.SHAKE_INTENSITY, settings.SHAKE_INTENSITY
+                )
+            else:
+                self.shake_offset = [0, 0]
 
     def update_animation(self):
         if not self.move_path:
@@ -54,11 +73,24 @@ class Unit:
             self.py += step if dy > 0 else -step if dy < 0 else 0
 
 
-def create_units(count, existing_units, is_player):
+def create_units(count, existing_units, is_player, spawn_zone=None):
     units = []
     unit_types = list(settings.UNIT_TYPES.keys())
     for _ in range(count):
-        pos = get_empty_pos(existing_units + units)
+        if spawn_zone:
+            pos = [
+                random.randint(spawn_zone[0], spawn_zone[0] + 2),
+                random.randint(spawn_zone[1], spawn_zone[1] + 2)
+            ]
+            attempts = 0
+            while get_unit_at(pos, existing_units + units) and attempts < 10:
+                pos = [
+                    random.randint(spawn_zone[0], spawn_zone[0] + 2),
+                    random.randint(spawn_zone[1], spawn_zone[1] + 2)
+                ]
+                attempts += 1
+        else:
+            pos = get_empty_pos(existing_units + units)
         unit_type = random.choice(unit_types)
         units.append(Unit(pos, unit_type=unit_type, is_player=is_player))
     return units
@@ -71,6 +103,7 @@ def bot_step(bot_unit, player_units, bot_units, damage_callback, effect_callback
         dy = abs(bot_unit.pos[1] - p_unit.pos[1])
         if dx <= 1 and dy <= 1 and (dx + dy) != 0:
             adjacent_enemies.append(p_unit)
+
     if adjacent_enemies:
         max_dmg = bot_unit.get_max_attack_damage()
         kill_target = None
@@ -84,6 +117,7 @@ def bot_step(bot_unit, player_units, bot_units, damage_callback, effect_callback
             target = min(adjacent_enemies, key=lambda u: u.hp)
         attack_damage = bot_unit.get_attack_damage()
         target.hp -= attack_damage
+        target.start_shake()
         damage_callback(target.pos, attack_damage)
         effect_callback(target.pos)
         if not target.is_alive():
@@ -91,7 +125,10 @@ def bot_step(bot_unit, player_units, bot_units, damage_callback, effect_callback
         return
 
     if player_units:
-        nearest_unit = min(player_units, key=lambda u: abs(u.pos[0] - bot_unit.pos[0]) + abs(u.pos[1] - bot_unit.pos[1]))
+        nearest_unit = min(
+            player_units,
+            key=lambda u: abs(u.pos[0] - bot_unit.pos[0]) + abs(u.pos[1] - bot_unit.pos[1])
+        )
         target_pos = nearest_unit.pos
         new_pos = move_towards(bot_unit.pos, target_pos)
         if isinstance(new_pos, list) and len(new_pos) == 2:
