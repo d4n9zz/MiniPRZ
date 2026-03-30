@@ -1,13 +1,14 @@
 import pygame
+
 WIDTH = 1920
 HEIGHT = 1080
 TILE_SIZE = 50
 INTERFACE_HEIGHT = 80
 FIELD_HEIGHT = HEIGHT - INTERFACE_HEIGHT
 COLS, ROWS = WIDTH // TILE_SIZE, FIELD_HEIGHT // TILE_SIZE
-VISIBILITY_RADIUS = 4
+VISIBILITY_RADIUS = 5
 TURN_TIME = 25000
-GAME_VERSION = "0.0.9"
+GAME_VERSION = "0.1"
 SHAKE_DURATION = 10
 SHAKE_INTENSITY = 4
 MENU_BG_TOP, MENU_BG_BOTTOM = (25, 32, 50), (45, 52, 70)
@@ -20,7 +21,6 @@ UI_BG, UI_BORDER, UI_TEXT = (45, 52, 70), (100, 149, 237), (240, 248, 255)
 UI_BUTTON_NORMAL, UI_BUTTON_HOVER, UI_BUTTON_SHADOW = (70, 130, 180), (100, 180, 255), (20, 25, 40)
 MENU_BTN_BLUE, MENU_BTN_BLUE_HOVER = (100, 149, 237), (135, 206, 250)
 MENU_BTN_RED, MENU_BTN_RED_HOVER = (255, 99, 71), (255, 130, 102)
-DEBUG_BTN_OFF, DEBUG_BTN_ON = (100, 100, 100), (0, 255, 0)
 HIT_EFFECT_COLORS = [(255, 69, 0), (255, 140, 0), (255, 215, 0), (255, 105, 180), (138, 43, 226)]
 DEATH_EFFECT_COLORS = [(255, 0, 0), (255, 69, 0), (139, 0, 0), (255, 140, 0), (100, 0, 0)]
 FOG_UNEXPLORED, FOG_EXPLORED_NO_VIS = (15, 20, 35, 230), (30, 40, 60, 90)
@@ -47,18 +47,18 @@ MUSIC_GAME = "resources/music/game_music.mp3"
 GITHUB_URL = "https://github.com/d4n9zz/MiniPRZ"
 GITHUB_ICON_PATH = "resources/ui/github_icon.png"
 from config import get_music_volume, get_background, get_snow_enabled
+
 MUSIC_VOLUME = get_music_volume()
 BG_OVERLAY_ALPHA = 180
 CURRENT_BACKGROUND = get_background()
 SNOW_ENABLED = get_snow_enabled()
 CUSTOM_BACKGROUNDS = {
-    'default': None,
     'bg1': 'resources/backgrounds/menu_bg1',
     'bg2': 'resources/backgrounds/menu_bg2',
     'bg3': 'resources/backgrounds/menu_bg3',
+    'bg4': 'resources/backgrounds/menu_bg4',
 }
 BACKGROUND_KEYS = list(CUSTOM_BACKGROUNDS.keys())
-DEBUG_TOGGLE_KEY = pygame.K_F3
 DEBUG_FOG_KEY = pygame.K_F4
 DEBUG_HEAL_KEY = pygame.K_F5
 DEBUG_INSTANT_WIN_KEY = pygame.K_F6

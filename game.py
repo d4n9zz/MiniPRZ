@@ -1,20 +1,44 @@
 import pygame
 import random
+
 from settings import (
-    WIDTH, HEIGHT, TILE_SIZE, FIELD_HEIGHT, VISIBILITY_RADIUS,
-    TURN_TIME, BG_TOP, BG_BOTTOM, GRID_COLOR, GRID_BORDER,
-    FOG_UNEXPLORED, FOG_EXPLORED_NO_VIS, PLAYER_HIGHLIGHT,
-    COLS, ROWS, BOT_GLOW, BOT2_GLOW, DEBUG_TOGGLE_KEY, DEBUG_FOG_KEY,
-    DEBUG_HEAL_KEY, DEBUG_INSTANT_WIN_KEY, DEBUG_SKIP_TURN_KEY,
-    ATTACK_RANGE_COLOR, UNIT_TYPES, MENU_BTN_RED, MENU_BTN_RED_HOVER
+    WIDTH,
+    HEIGHT,
+    TILE_SIZE,
+    FIELD_HEIGHT,
+    VISIBILITY_RADIUS,
+    TURN_TIME,
+    BG_TOP,
+    BG_BOTTOM,
+    GRID_COLOR,
+    GRID_BORDER,
+    FOG_UNEXPLORED,
+    FOG_EXPLORED_NO_VIS,
+    PLAYER_HIGHLIGHT,
+    COLS,
+    ROWS,
+    BOT_GLOW,
+    BOT2_GLOW,
+    DEBUG_FOG_KEY,
+    DEBUG_HEAL_KEY,
+    DEBUG_INSTANT_WIN_KEY,
+    DEBUG_SKIP_TURN_KEY,
+    ATTACK_RANGE_COLOR,
+    UNIT_TYPES,
+    MENU_BTN_RED,
+    MENU_BTN_RED_HOVER,
 )
 from entities import create_units, bot_step, Unit
 from effects import DamageNumber, BattleEffect, DeathEffect
 from ui import (
-    draw_interface, draw_menu_button, draw_pause_menu,
-    draw_debug_button, draw_debug_overlay, draw_top_interface
+    draw_interface,
+    draw_menu_button,
+    draw_pause_menu,
+    draw_debug_overlay,
+    draw_top_interface,
 )
 from music import play_game, fade_music_volume
+from menu import settings_menu
 
 
 def _get_random_spawn_position(is_player):
@@ -63,19 +87,52 @@ def _get_attackable_tiles(unit, enemy_units):
 
 class Game:
     slots = [
-        'screen', 'clock', 'player_units', 'bot_units', 'bot2_units', 'selected_unit',
-        'current_turn', 'game_over', 'winner', 'explored_tiles',
-        'turn_timer_start', 'damage_numbers', 'battle_effects',
-        'death_effects', 'bot_action_index', 'bot_wait_until',
-        'bot2_action_index', 'bot2_wait_until',
-        'return_to_menu', 'paused', 'pause_resume_btn', 'pause_menu_btn',
-        'total_paused_time', 'pause_start_time', 'music_fade_target',
-        'music_fade_current', 'music_fade_speed', 'fog_unexplored_surf',
-        'fog_explored_surf', 'debug_mode', 'debug_fog_override',
-        'debug_btn_rect', 'bg_surface', 'grid_surface',
-        'player_spawn', 'bot_spawn', 'bot2_spawn', 'player_city_img', 'bot_city_img',
-        'player_gold', 'bot_gold', 'bot2_gold', 'shop_open', 'shop_city_pos', 'shop_buttons',
-        'shop_close_btn'
+        "screen",
+        "clock",
+        "player_units",
+        "bot_units",
+        "bot2_units",
+        "selected_unit",
+        "current_turn",
+        "game_over",
+        "winner",
+        "explored_tiles",
+        "turn_timer_start",
+        "damage_numbers",
+        "battle_effects",
+        "death_effects",
+        "bot_action_index",
+        "bot_wait_until",
+        "bot2_action_index",
+        "bot2_wait_until",
+        "return_to_menu",
+        "paused",
+        "pause_resume_btn",
+        "pause_settings_btn",
+        "pause_menu_btn",
+        "total_paused_time",
+        "pause_start_time",
+        "music_fade_target",
+        "music_fade_current",
+        "music_fade_speed",
+        "fog_unexplored_surf",
+        "fog_explored_surf",
+        "debug_mode",
+        "debug_fog_override",
+        "bg_surface",
+        "grid_surface",
+        "player_spawn",
+        "bot_spawn",
+        "bot2_spawn",
+        "player_city_img",
+        "bot_city_img",
+        "player_gold",
+        "bot_gold",
+        "bot2_gold",
+        "shop_open",
+        "shop_city_pos",
+        "shop_buttons",
+        "shop_close_btn",
     ]
 
     def __init__(self, screen, clock):
@@ -97,7 +154,9 @@ class Game:
         self.bot_city_img = None
         try:
             player_city = pygame.image.load("resources/ui/player_city.png").convert_alpha()
-            self.player_city_img = pygame.transform.smoothscale(player_city, (TILE_SIZE, TILE_SIZE))
+            self.player_city_img = pygame.transform.smoothscale(
+                player_city, (TILE_SIZE, TILE_SIZE)
+            )
         except pygame.error:
             pass
         try:
@@ -127,13 +186,13 @@ class Game:
             self.player_spawn = _get_random_spawn_position(is_player=True)
             self.bot_spawn = _get_random_spawn_position(is_player=False)
             self.bot2_spawn = _get_random_spawn_position(is_player=False)
-            if (_get_distance_between_spawns(self.player_spawn, self.bot_spawn) >= min_distance and
-                    _get_distance_between_spawns(self.player_spawn, self.bot2_spawn) >= min_distance and
-                    _get_distance_between_spawns(self.bot_spawn, self.bot2_spawn) >= min_distance):
+            if (
+                _get_distance_between_spawns(self.player_spawn, self.bot_spawn) >= min_distance
+                and _get_distance_between_spawns(self.player_spawn, self.bot2_spawn) >= min_distance
+                and _get_distance_between_spawns(self.bot_spawn, self.bot2_spawn) >= min_distance
+            ):
                 break
-        self.player_units = create_units(
-            2, [], is_player=True, spawn_zone=self.player_spawn
-        )
+        self.player_units = create_units(2, [], is_player=True, spawn_zone=self.player_spawn)
         self.bot_units = create_units(
             2, self.player_units, is_player=False, spawn_zone=self.bot_spawn
         )
@@ -156,6 +215,7 @@ class Game:
         self.return_to_menu = False
         self.paused = False
         self.pause_resume_btn = None
+        self.pause_settings_btn = None
         self.pause_menu_btn = None
         self.total_paused_time = 0
         self.pause_start_time = 0
@@ -168,7 +228,6 @@ class Game:
         self.fog_explored_surf.fill(FOG_EXPLORED_NO_VIS)
         self.debug_mode = False
         self.debug_fog_override = False
-        self.debug_btn_rect = None
         self.player_gold = 15
         self.bot_gold = 15
         self.bot2_gold = 15
@@ -191,13 +250,11 @@ class Game:
     def _update_music_fade(self):
         if self.music_fade_current < self.music_fade_target:
             self.music_fade_current = min(
-                self.music_fade_target,
-                self.music_fade_current + self.music_fade_speed
+                self.music_fade_target, self.music_fade_current + self.music_fade_speed
             )
         elif self.music_fade_current > self.music_fade_target:
             self.music_fade_current = max(
-                self.music_fade_target,
-                self.music_fade_current - self.music_fade_speed
+                self.music_fade_target, self.music_fade_current - self.music_fade_speed
             )
         fade_music_volume(self.music_fade_current)
 
@@ -235,22 +292,32 @@ class Game:
             else:
                 city_color = BOT2_GLOW
             center_x = city_x + TILE_SIZE // 2
-            city_y + TILE_SIZE // 2
-            pygame.draw.rect(self.screen, city_color, (city_x + 5, city_y + 15, TILE_SIZE - 10, TILE_SIZE - 20),
-                             border_radius=3)
-            pygame.draw.polygon(self.screen, (139, 69, 19), [
-                (center_x - 15, city_y + 15),
-                (center_x + 15, city_y + 15),
-                (center_x, city_y + 5)
-            ])
+            center_y = city_y + TILE_SIZE // 2
+            pygame.draw.rect(
+                self.screen, city_color, (city_x + 5, city_y + 15, TILE_SIZE - 10, TILE_SIZE - 20),
+                border_radius=3,
+            )
+            pygame.draw.polygon(
+                self.screen,
+                (139, 69, 19),
+                [(center_x - 15, city_y + 15), (center_x + 15, city_y + 15), (center_x, city_y + 5)],
+            )
             pygame.draw.rect(self.screen, (139, 69, 19), (city_x + 18, city_y + 25, 6, 15))
             pygame.draw.rect(self.screen, (139, 69, 19), (city_x + 26, city_y + 25, 6, 15))
             tower_h = 12
-            pygame.draw.rect(self.screen, city_color, (city_x + 2, city_y + 10, 8, tower_h), border_radius=2)
-            pygame.draw.rect(self.screen, city_color, (city_x + TILE_SIZE - 10, city_y + 10, 8, tower_h),
-                             border_radius=2)
+            pygame.draw.rect(
+                self.screen, city_color, (city_x + 2, city_y + 10, 8, tower_h), border_radius=2
+            )
+            pygame.draw.rect(
+                self.screen,
+                city_color,
+                (city_x + TILE_SIZE - 10, city_y + 10, 8, tower_h),
+                border_radius=2,
+            )
             pygame.draw.circle(self.screen, (255, 255, 255), (city_x + 6, city_y + 10), 3)
-            pygame.draw.circle(self.screen, (255, 255, 255), (city_x + TILE_SIZE - 6, city_y + 10), 3)
+            pygame.draw.circle(
+                self.screen, (255, 255, 255), (city_x + TILE_SIZE - 6, city_y + 10), 3
+            )
 
     def _draw_spawn_zones(self, visible):
         player_city_pos = [self.player_spawn[0] + 1, self.player_spawn[1] + 1]
@@ -261,7 +328,7 @@ class Game:
             self.player_spawn[0] * TILE_SIZE,
             self.player_spawn[1] * TILE_SIZE,
             TILE_SIZE * 3,
-            TILE_SIZE * 3
+            TILE_SIZE * 3,
         )
         pygame.draw.rect(self.screen, PLAYER_HIGHLIGHT, player_zone_rect, 3)
         self._draw_city(player_city_pos, is_player=True)
@@ -272,7 +339,7 @@ class Game:
                 self.bot_spawn[0] * TILE_SIZE,
                 self.bot_spawn[1] * TILE_SIZE,
                 TILE_SIZE * 3,
-                TILE_SIZE * 3
+                TILE_SIZE * 3,
             )
             pygame.draw.rect(self.screen, BOT_GLOW, bot_zone_rect, 3)
             self._draw_city(bot_city_pos, is_player=False, bot_number=1)
@@ -283,7 +350,7 @@ class Game:
                 self.bot2_spawn[0] * TILE_SIZE,
                 self.bot2_spawn[1] * TILE_SIZE,
                 TILE_SIZE * 3,
-                TILE_SIZE * 3
+                TILE_SIZE * 3,
             )
             pygame.draw.rect(self.screen, BOT2_GLOW, bot2_zone_rect, 3)
             self._draw_city(bot2_city_pos, is_player=False, bot_number=2)
@@ -295,6 +362,7 @@ class Game:
 
     def _draw_shop_menu(self):
         from settings import font, small_font
+
         if not self.shop_open or not font:
             return
 
@@ -334,17 +402,24 @@ class Game:
             pygame.draw.rect(self.screen, (255, 255, 255), btn_rect, 2, border_radius=8)
 
             unit_name = small_font.render(
-                f"{data['name']} (HP:{data['hp']} DMG:{data['damage'][0]}-{data['damage'][1]})", True, (240, 248, 255))
+                f"{data['name']} (HP:{data['hp']} DMG:{data['damage'][0]}-{data['damage'][1]})",
+                True,
+                (240, 248, 255),
+            )
             cost_text = small_font.render(f"Cost: {data['hp']} gold", True, (255, 215, 0))
 
             self.screen.blit(unit_name, (panel_x + 35, btn_y + 10))
             self.screen.blit(cost_text, (panel_x + 35, btn_y + 33))
 
-            self.shop_buttons.append((btn_rect, utype, data['hp']))
+            self.shop_buttons.append((btn_rect, utype, data["hp"]))
 
         mouse_x, mouse_y = pygame.mouse.get_pos()
         self.shop_close_btn = pygame.Rect(panel_x + panel_w - 95, panel_y + panel_h - 55, 80, 40)
-        close_color = MENU_BTN_RED_HOVER if self.shop_close_btn.collidepoint(mouse_x, mouse_y) else MENU_BTN_RED
+        close_color = (
+            MENU_BTN_RED_HOVER
+            if self.shop_close_btn.collidepoint(mouse_x, mouse_y)
+            else MENU_BTN_RED
+        )
         pygame.draw.rect(self.screen, close_color, self.shop_close_btn, border_radius=8)
         pygame.draw.rect(self.screen, (255, 255, 255), self.shop_close_btn, 2, border_radius=8)
         close_text = small_font.render("CLOSE", True, (240, 248, 255))
@@ -352,6 +427,7 @@ class Game:
 
     def _handle_shop_click(self, mouse_x, mouse_y):
         from utils import get_unit_at
+
         if not self.shop_open:
             city_pos = [self.player_spawn[0] + 1, self.player_spawn[1] + 1]
             city_x = city_pos[0] * TILE_SIZE
@@ -368,7 +444,13 @@ class Game:
                     spawn_x = random.randint(self.player_spawn[0], self.player_spawn[0] + 2)
                     spawn_y = random.randint(self.player_spawn[1], self.player_spawn[1] + 2)
                     attempts = 0
-                    while get_unit_at([spawn_x, spawn_y], self.player_units + self.bot_units + self.bot2_units) and attempts < 10:
+                    while (
+                        get_unit_at(
+                            [spawn_x, spawn_y],
+                            self.player_units + self.bot_units + self.bot2_units,
+                        )
+                        and attempts < 10
+                    ):
                         spawn_x = random.randint(self.player_spawn[0], self.player_spawn[0] + 2)
                         spawn_y = random.randint(self.player_spawn[1], self.player_spawn[1] + 2)
                         attempts += 1
@@ -387,13 +469,19 @@ class Game:
         random.shuffle(unit_types)
 
         for utype in unit_types:
-            cost = UNIT_TYPES[utype]['hp']
+            cost = UNIT_TYPES[utype]["hp"]
             if bot_gold_var >= cost and len(bot_units) < 8:
                 spawn_x = random.randint(spawn_zone[0], spawn_zone[0] + 2)
                 spawn_y = random.randint(spawn_zone[1], spawn_zone[1] + 2)
                 from utils import get_unit_at
+
                 attempts = 0
-                while get_unit_at([spawn_x, spawn_y], self.player_units + self.bot_units + self.bot2_units) and attempts < 10:
+                while (
+                    get_unit_at(
+                        [spawn_x, spawn_y], self.player_units + self.bot_units + self.bot2_units
+                    )
+                    and attempts < 10
+                ):
                     spawn_x = random.randint(spawn_zone[0], spawn_zone[0] + 2)
                     spawn_y = random.randint(spawn_zone[1], spawn_zone[1] + 2)
                     attempts += 1
@@ -432,6 +520,7 @@ class Game:
 
     def _draw_units(self, visible):
         from settings import player_unit_imgs, bot_unit_imgs
+
         all_units = self.player_units + self.bot_units + self.bot2_units
         for unit in all_units:
             if tuple(unit.pos) not in visible and not unit.is_player and not self.debug_fog_override:
@@ -459,24 +548,31 @@ class Game:
             if unit == self.selected_unit:
                 for i in range(3):
                     alpha = 200 - i * 50
-                    highlight_surf = pygame.Surface((TILE_SIZE + 20, TILE_SIZE + 20), pygame.SRCALPHA)
+                    highlight_surf = pygame.Surface(
+                        (TILE_SIZE + 20, TILE_SIZE + 20), pygame.SRCALPHA
+                    )
                     pygame.draw.circle(
                         highlight_surf,
                         (*PLAYER_HIGHLIGHT, alpha),
                         (TILE_SIZE // 2 + 10, TILE_SIZE // 2 + 10),
                         TILE_SIZE // 3 + 12 + i * 4,
-                        3
+                        3,
                     )
                     self.screen.blit(
                         highlight_surf,
-                        (unit.px - TILE_SIZE // 2 - 10, unit.py - TILE_SIZE // 2 - 10)
+                        (unit.px - TILE_SIZE // 2 - 10, unit.py - TILE_SIZE // 2 - 10),
                     )
 
-    def _handle_input(self, interface_btn, menu_btn_rect, debug_btn_rect):
+    def _handle_input(self, interface_btn, menu_btn_rect):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return False
             if event.type == pygame.KEYDOWN:
+                keys = pygame.key.get_pressed()
+                if event.key == pygame.K_F11 and keys[pygame.K_F12]:
+                    self.debug_mode = not self.debug_mode
+                elif event.key == pygame.K_F12 and keys[pygame.K_F11]:
+                    self.debug_mode = not self.debug_mode
                 if event.key == pygame.K_ESCAPE:
                     if self.shop_open:
                         self.shop_open = False
@@ -488,8 +584,6 @@ class Game:
                         self._reset_game()
                     elif self.current_turn == "player" and not self.paused and not self.shop_open:
                         self._end_player_turn()
-                if event.key == DEBUG_TOGGLE_KEY:
-                    self.debug_mode = not self.debug_mode
                 if event.key == DEBUG_FOG_KEY:
                     self.debug_fog_override = not self.debug_fog_override
                 if event.key == DEBUG_HEAL_KEY and self.current_turn == "player":
@@ -513,15 +607,19 @@ class Game:
                         self.selected_unit = self.player_units[3]
             if event.type == pygame.MOUSEBUTTONDOWN and not self.game_over:
                 mouse_x, mouse_y = pygame.mouse.get_pos()
-                if debug_btn_rect.collidepoint(mouse_x, mouse_y):
-                    self.debug_mode = not self.debug_mode
-                    continue
                 if menu_btn_rect.collidepoint(mouse_x, mouse_y):
                     self._set_pause_state(True)
                     continue
                 if self.paused:
                     if self.pause_resume_btn and self.pause_resume_btn.collidepoint(mouse_x, mouse_y):
                         self._set_pause_state(False)
+                    elif (
+                        self.pause_settings_btn
+                        and self.pause_settings_btn.collidepoint(mouse_x, mouse_y)
+                    ):
+                        self._set_pause_state(False)
+                        settings_menu(self.screen, self.clock)
+                        self._set_pause_state(True)
                     elif self.pause_menu_btn and self.pause_menu_btn.collidepoint(mouse_x, mouse_y):
                         self.return_to_menu = True
                         return False
@@ -539,6 +637,7 @@ class Game:
 
     def _handle_field_click(self, mouse_x, mouse_y):
         from utils import get_unit_at
+
         grid_pos = [mouse_x // TILE_SIZE, mouse_y // TILE_SIZE]
         clicked_unit = get_unit_at(grid_pos, self.player_units)
         if clicked_unit:
@@ -550,7 +649,9 @@ class Game:
                 enemy_unit = get_unit_at(grid_pos, self.bot_units + self.bot2_units)
                 if enemy_unit:
                     self._perform_attack(self.selected_unit, enemy_unit)
-                elif not get_unit_at(grid_pos, self.player_units) and not get_unit_at(grid_pos, self.bot_units + self.bot2_units):
+                elif not get_unit_at(grid_pos, self.player_units) and not get_unit_at(
+                    grid_pos, self.bot_units + self.bot2_units
+                ):
                     self.selected_unit.move_path = [grid_pos]
                     self.selected_unit.has_moved = True
                     self.selected_unit = None
@@ -599,7 +700,10 @@ class Game:
             if elapsed >= TURN_TIME:
                 self._end_player_turn()
         if self.current_turn == "bot" and not self.game_over:
-            if pygame.time.get_ticks() >= self.bot_wait_until and self.bot_action_index < len(self.bot_units):
+            if (
+                pygame.time.get_ticks() >= self.bot_wait_until
+                and self.bot_action_index < len(self.bot_units)
+            ):
                 all_enemies = self.player_units + self.bot2_units
                 bot_step(
                     self.bot_units[self.bot_action_index],
@@ -607,7 +711,7 @@ class Game:
                     self.bot_units,
                     lambda pos, dmg: self.damage_numbers.append(DamageNumber(pos, dmg)),
                     lambda pos: self.battle_effects.append(BattleEffect(pos)),
-                    lambda pos: self.death_effects.append(DeathEffect(pos))
+                    lambda pos: self.death_effects.append(DeathEffect(pos)),
                 )
                 self.bot_action_index += 1
                 if self.bot_action_index < len(self.bot_units):
@@ -619,7 +723,10 @@ class Game:
                     self.bot2_action_index = 0
                     self.bot2_wait_until = pygame.time.get_ticks() + random.randint(500, 1000)
         elif self.current_turn == "bot2" and not self.game_over:
-            if pygame.time.get_ticks() >= self.bot2_wait_until and self.bot2_action_index < len(self.bot2_units):
+            if (
+                pygame.time.get_ticks() >= self.bot2_wait_until
+                and self.bot2_action_index < len(self.bot2_units)
+            ):
                 all_enemies = self.player_units + self.bot_units
                 bot_step(
                     self.bot2_units[self.bot2_action_index],
@@ -627,13 +734,15 @@ class Game:
                     self.bot2_units,
                     lambda pos, dmg: self.damage_numbers.append(DamageNumber(pos, dmg)),
                     lambda pos: self.battle_effects.append(BattleEffect(pos)),
-                    lambda pos: self.death_effects.append(DeathEffect(pos))
+                    lambda pos: self.death_effects.append(DeathEffect(pos)),
                 )
                 self.bot2_action_index += 1
                 if self.bot2_action_index < len(self.bot2_units):
                     self.bot2_wait_until = pygame.time.get_ticks() + random.randint(400, 800)
                 else:
-                    self.bot2_gold = self._bot_buy_units(self.bot2_units, self.bot2_gold, self.bot2_spawn)
+                    self.bot2_gold = self._bot_buy_units(
+                        self.bot2_units, self.bot2_gold, self.bot2_spawn
+                    )
                     self.bot2_gold += 5
                     self.current_turn = "player"
                     self.turn_timer_start = pygame.time.get_ticks()
@@ -646,6 +755,7 @@ class Game:
 
     def _draw_game_over(self):
         from settings import font, big_font, UI_TEXT, PLAYER_HIGHLIGHT
+
         overlay = pygame.Surface((WIDTH, HEIGHT))
         overlay.set_alpha(200)
         overlay.fill((15, 20, 35))
@@ -663,11 +773,13 @@ class Game:
             self.screen.blit(restart_text, (restart_x, restart_y))
 
     def _draw_pause_menu(self):
-        resume_btn = pygame.Rect(WIDTH // 2 - 120, FIELD_HEIGHT // 2, 240, 50)
+        resume_btn = pygame.Rect(WIDTH // 2 - 120, FIELD_HEIGHT // 2 - 60, 240, 50)
+        settings_btn = pygame.Rect(WIDTH // 2 - 120, FIELD_HEIGHT // 2, 240, 50)
         menu_btn = pygame.Rect(WIDTH // 2 - 120, FIELD_HEIGHT // 2 + 60, 240, 50)
         self.pause_resume_btn = resume_btn
+        self.pause_settings_btn = settings_btn
         self.pause_menu_btn = menu_btn
-        draw_pause_menu(self.screen, resume_btn, menu_btn)
+        draw_pause_menu(self.screen, resume_btn, settings_btn, menu_btn)
 
     def run(self):
         running = True
@@ -688,21 +800,30 @@ class Game:
                 effect.draw(self.screen, visible)
             self._draw_fog_of_war(visible)
             interface_btn = draw_interface(
-                self.screen, self.current_turn, self.player_units,
-                self.bot_units, self.bot2_units, self.turn_timer_start, TURN_TIME, self.selected_unit,
-                self.paused, self.pause_start_time, self.total_paused_time
+                self.screen,
+                self.current_turn,
+                self.player_units,
+                self.bot_units,
+                self.bot2_units,
+                self.turn_timer_start,
+                TURN_TIME,
+                self.selected_unit,
+                self.paused,
+                self.pause_start_time,
+                self.total_paused_time,
             )
             menu_btn_rect = draw_menu_button(self.screen)
-            debug_btn_rect = draw_debug_button(self.screen, self.debug_mode, menu_btn_rect)
             if self.paused:
                 self._draw_pause_menu()
             if self.game_over:
                 self._draw_game_over()
             if self.debug_mode:
-                draw_debug_overlay(self.screen, self.clock, visible, self.player_units, self.bot_units + self.bot2_units)
+                draw_debug_overlay(
+                    self.screen, visible, self.player_units, self.bot_units + self.bot2_units
+                )
             if self.shop_open:
                 self._draw_shop_menu()
-            running = self._handle_input(interface_btn, menu_btn_rect, debug_btn_rect)
+            running = self._handle_input(interface_btn, menu_btn_rect)
             self._update_game()
             self._update_music_fade()
             pygame.display.update()
