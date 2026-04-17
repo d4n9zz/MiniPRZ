@@ -2,7 +2,7 @@
 <img width="600" height="400" alt="logo" src="https://github.com/user-attachments/assets/130b01b8-c88c-4e04-a41a-f6d1eadd07d0" />
 
 ![Platform](https://img.shields.io/badge/Platform-Windows-blue.svg)
-![MiniPRZ](https://img.shields.io/badge/Python-3+-blue.svg)
+![MiniPRZ](https://img.shields.io/badge/Python-3.1+-blue.svg)
 ![Library](https://img.shields.io/badge/library-pygame-orange.svg)
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
