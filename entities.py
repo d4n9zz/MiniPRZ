@@ -2,9 +2,8 @@ import random
 import settings
 from utils import move_towards, get_unit_at, get_empty_pos, COLS, ROWS
 
-
 class Unit:
-    slots = [
+    __slots__ = [
         'pos', 'unit_type', 'name', 'hp', 'max_hp',
         'damage_range', 'color', 'speed', 'is_player',
         'move_path', 'has_moved', 'px', 'py',
@@ -72,7 +71,6 @@ class Unit:
             self.px += step if dx > 0 else -step if dx < 0 else 0
             self.py += step if dy > 0 else -step if dy < 0 else 0
 
-
 def create_units(count, existing_units, is_player, spawn_zone=None):
     units = []
     unit_types = list(settings.UNIT_TYPES.keys())
@@ -94,7 +92,6 @@ def create_units(count, existing_units, is_player, spawn_zone=None):
         unit_type = random.choice(unit_types)
         units.append(Unit(pos, unit_type=unit_type, is_player=is_player))
     return units
-
 
 def bot_step(bot_unit, player_units, bot_units, damage_callback, effect_callback, death_callback):
     adjacent_enemies = []
@@ -133,6 +130,6 @@ def bot_step(bot_unit, player_units, bot_units, damage_callback, effect_callback
         new_pos = move_towards(bot_unit.pos, target_pos)
         if isinstance(new_pos, list) and len(new_pos) == 2:
             if (0 <= new_pos[0] < COLS and 0 <= new_pos[1] < ROWS and
-                    not get_unit_at(new_pos, bot_units) and
-                    not get_unit_at(new_pos, player_units)):
+                not get_unit_at(new_pos, bot_units) and
+                not get_unit_at(new_pos, player_units)):
                 bot_unit.move_path = [new_pos]
