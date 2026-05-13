@@ -1,6 +1,5 @@
 import pygame
 import random
-
 from settings import (
     WIDTH,
     HEIGHT,
@@ -292,7 +291,7 @@ class Game:
             else:
                 city_color = BOT2_GLOW
             center_x = city_x + TILE_SIZE // 2
-            center_y = city_y + TILE_SIZE // 2
+            city_y + TILE_SIZE // 2
             pygame.draw.rect(
                 self.screen, city_color, (city_x + 5, city_y + 15, TILE_SIZE - 10, TILE_SIZE - 20),
                 border_radius=3,
@@ -367,7 +366,7 @@ class Game:
             return
 
         panel_w = 520
-        panel_h = 400
+        panel_h = 420
         panel_x = WIDTH // 2 - panel_w // 2
         panel_y = FIELD_HEIGHT // 2 - panel_h // 2
 
@@ -392,8 +391,8 @@ class Game:
 
         for i, utype in enumerate(unit_types):
             data = UNIT_TYPES[utype]
-            btn_y = start_y + i * 65
-            btn_rect = pygame.Rect(panel_x + 20, btn_y, panel_w - 140, 55)
+            btn_y = start_y + i * 70
+            btn_rect = pygame.Rect(panel_x + 20, btn_y, panel_w - 140, 60)
 
             mouse_x, mouse_y = pygame.mouse.get_pos()
             color = (100, 180, 255) if btn_rect.collidepoint(mouse_x, mouse_y) else (70, 130, 180)
@@ -408,13 +407,13 @@ class Game:
             )
             cost_text = small_font.render(f"Cost: {data['hp']} gold", True, (255, 215, 0))
 
-            self.screen.blit(unit_name, (panel_x + 35, btn_y + 10))
-            self.screen.blit(cost_text, (panel_x + 35, btn_y + 33))
+            self.screen.blit(unit_name, (panel_x + 35, btn_y + 12))
+            self.screen.blit(cost_text, (panel_x + 35, btn_y + 34))
 
             self.shop_buttons.append((btn_rect, utype, data["hp"]))
 
         mouse_x, mouse_y = pygame.mouse.get_pos()
-        self.shop_close_btn = pygame.Rect(panel_x + panel_w - 95, panel_y + panel_h - 55, 80, 40)
+        self.shop_close_btn = pygame.Rect(panel_x + panel_w - 95, panel_y + panel_h - 65, 80, 40)
         close_color = (
             MENU_BTN_RED_HOVER
             if self.shop_close_btn.collidepoint(mouse_x, mouse_y)
@@ -429,6 +428,8 @@ class Game:
         from utils import get_unit_at
 
         if not self.shop_open:
+            if self.selected_unit is not None:
+                return
             city_pos = [self.player_spawn[0] + 1, self.player_spawn[1] + 1]
             city_x = city_pos[0] * TILE_SIZE
             city_y = city_pos[1] * TILE_SIZE
@@ -436,6 +437,11 @@ class Game:
             if city_rect.collidepoint(mouse_x, mouse_y):
                 self.shop_open = True
                 self.shop_city_pos = city_pos
+            return
+
+        if self.shop_close_btn and self.shop_close_btn.collidepoint(mouse_x, mouse_y):
+            self.shop_open = False
+            self.shop_city_pos = None
             return
 
         for btn_rect, utype, cost in self.shop_buttons:
@@ -631,8 +637,8 @@ class Game:
                     if self.shop_open:
                         self._handle_shop_click(mouse_x, mouse_y)
                     else:
-                        self._handle_field_click(mouse_x, mouse_y)
                         self._handle_shop_click(mouse_x, mouse_y)
+                        self._handle_field_click(mouse_x, mouse_y)
         return True
 
     def _handle_field_click(self, mouse_x, mouse_y):
@@ -641,7 +647,10 @@ class Game:
         grid_pos = [mouse_x // TILE_SIZE, mouse_y // TILE_SIZE]
         clicked_unit = get_unit_at(grid_pos, self.player_units)
         if clicked_unit:
-            self.selected_unit = clicked_unit
+            if self.selected_unit == clicked_unit:
+                self.selected_unit = None
+            else:
+                self.selected_unit = clicked_unit
         elif self.selected_unit and not self.selected_unit.has_moved:
             dx_move = abs(grid_pos[0] - self.selected_unit.pos[0])
             dy_move = abs(grid_pos[1] - self.selected_unit.pos[1])
@@ -788,7 +797,6 @@ class Game:
             self.explored_tiles.update(visible)
             self.screen.blit(self.bg_surface, (0, 0))
             self.screen.blit(self.grid_surface, (0, 0))
-            self._draw_top_game_interface()
             self._draw_spawn_zones(visible)
             self._draw_units(visible)
             self._draw_attack_indicators(visible)
@@ -799,6 +807,7 @@ class Game:
             for effect in self.death_effects:
                 effect.draw(self.screen, visible)
             self._draw_fog_of_war(visible)
+            self._draw_top_game_interface()
             interface_btn = draw_interface(
                 self.screen,
                 self.current_turn,

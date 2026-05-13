@@ -45,21 +45,31 @@ class ResourceManager:
 
 
 def main():
+    pygame.mixer.pre_init(44100, -16, 2, 1024)
     pygame.init()
-    pygame.mixer.init()
+
+    try:
+        pygame.mixer.init()
+    except pygame.error:
+        print("Warning: Audio not available, running without sound")
+        pygame.mixer = None
+
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption("MiniPRZ")
     clock = pygame.time.Clock()
+
     resources = ResourceManager()
     resources.load_fonts()
     ResourceManager.load_unit_images()
     ResourceManager.load_ui_images()
+
     while True:
         if not main_menu(screen, clock):
             break
         game = Game(screen, clock)
         if not game.run():
             break
+
     pygame.quit()
     sys.exit()
 

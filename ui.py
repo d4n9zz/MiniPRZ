@@ -73,17 +73,16 @@ def draw_menu_button(screen):
 
 def draw_pause_menu(screen, resume_btn, settings_btn, menu_btn):
     from settings import font, big_font
-
     overlay = pygame.Surface((WIDTH, FIELD_HEIGHT))
     overlay.set_alpha(200)
     overlay.fill((15, 20, 35))
     screen.blit(overlay, (0, 0))
-    panel_rect = pygame.Rect(WIDTH // 2 - 150, FIELD_HEIGHT // 2 - 120, 300, 260)
+    panel_rect = pygame.Rect(WIDTH // 2 - 150, FIELD_HEIGHT // 2 - 140, 300, 300)
     pygame.draw.rect(screen, UI_BG, panel_rect, border_radius=12)
     pygame.draw.rect(screen, UI_BORDER, panel_rect, 3, border_radius=12)
     if big_font:
         title = big_font.render("PAUSED", True, UI_TEXT)
-        screen.blit(title, title.get_rect(center=(WIDTH // 2, FIELD_HEIGHT // 2 - 80)))
+        screen.blit(title, title.get_rect(center=(WIDTH // 2, FIELD_HEIGHT // 2 - 90)))
     mouse_x, mouse_y = pygame.mouse.get_pos()
     buttons = [
         (resume_btn, "RESUME", MENU_BTN_BLUE, MENU_BTN_BLUE_HOVER),
