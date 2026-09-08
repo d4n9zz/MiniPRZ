@@ -7,14 +7,15 @@ from background import BackgroundManager
 from config import set_music_volume, set_background, get_background, set_snow_enabled, get_snow_enabled
 from music import play_menu
 from settings import (
-    WIDTH, HEIGHT, MENU_BG_TOP, MENU_BG_BOTTOM,
-    MENU_BTN_BLUE, MENU_BTN_BLUE_HOVER, MENU_BTN_RED, MENU_BTN_RED_HOVER,
-    UI_TEXT, UI_BG, UI_BORDER, BG_OVERLAY_ALPHA,
-    CUSTOM_BACKGROUNDS, BACKGROUND_KEYS, GAME_VERSION
+WIDTH, HEIGHT, MENU_BG_TOP, MENU_BG_BOTTOM,
+MENU_BTN_BLUE, MENU_BTN_BLUE_HOVER, MENU_BTN_RED, MENU_BTN_RED_HOVER,
+UI_TEXT, UI_BG, UI_BORDER, BG_OVERLAY_ALPHA,
+CUSTOM_BACKGROUNDS, BACKGROUND_KEYS, GAME_VERSION,
+UI_ANIM_DURATION, UI_STAGGER_DELAY, UI_SLIDE_DISTANCE
 )
+from animation import UIAnimation, staggered_progress
 
 bg_manager = BackgroundManager()
-
 
 def settings_menu(screen, clock):
     from settings import font
@@ -23,6 +24,10 @@ def settings_menu(screen, clock):
     saved_bg = get_background()
     bg_index = BACKGROUND_KEYS.index(saved_bg) if saved_bg in BACKGROUND_KEYS else 0
     snow_enabled = get_snow_enabled()
+
+    # === АНИМАЦИЯ ===
+    anim = UIAnimation(duration=UI_ANIM_DURATION)
+
     while running_settings:
         needs_gradient = not bg_manager.draw(screen, WIDTH, HEIGHT)
         if needs_gradient:
@@ -32,61 +37,97 @@ def settings_menu(screen, clock):
                 g = int(MENU_BG_TOP[1] * (1 - ratio) + MENU_BG_BOTTOM[1] * ratio)
                 b = int(MENU_BG_TOP[2] * (1 - ratio) + MENU_BG_BOTTOM[2] * ratio)
                 pygame.draw.line(screen, (r, g, b), (0, y), (WIDTH, y))
+
+        eased = anim.get_progress()
         overlay = pygame.Surface((WIDTH, HEIGHT))
-        overlay.set_alpha(BG_OVERLAY_ALPHA)
+        overlay.set_alpha(int(BG_OVERLAY_ALPHA * eased))
         overlay.fill((10, 12, 20))
         screen.blit(overlay, (0, 0))
-        panel_rect = pygame.Rect(WIDTH // 2 - 200, HEIGHT // 2 - 150, 400, 380)
-        pygame.draw.rect(screen, UI_BG, panel_rect, border_radius=12)
+
+        # Панель выезжает снизу
+        target_y = HEIGHT // 2 - 150
+        start_y = target_y + UI_SLIDE_DISTANCE
+        panel_y = int(start_y + (target_y - start_y) * eased)
+        panel_rect = pygame.Rect(WIDTH // 2 - 200, panel_y, 400, 380)
+
+        panel_surf = pygame.Surface((400, 380), pygame.SRCALPHA)
+        panel_surf.fill((*UI_BG, int(255 * eased)))
+        screen.blit(panel_surf, panel_rect.topleft)
         pygame.draw.rect(screen, UI_BORDER, panel_rect, 2, border_radius=12)
+
+        # Заголовок с fade
         if font:
             title = font.render("SETTINGS", True, UI_TEXT)
-            screen.blit(title, title.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 110)))
-            vol_text = font.render(f"Volume: {int(vol * 100)}%", True, UI_TEXT)
-            screen.blit(vol_text, vol_text.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 50)))
-            bg_name = BACKGROUND_KEYS[bg_index]
-            bg_text = font.render(f"BG: {bg_name}", True, UI_TEXT)
-            screen.blit(bg_text, bg_text.get_rect(center=(WIDTH // 2, HEIGHT // 2)))
-            snow_text = font.render(f"Snow: {'ON' if snow_enabled else 'OFF'}", True, UI_TEXT)
-            screen.blit(snow_text, snow_text.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 70)))
+            title.set_alpha(int(255 * eased))
+            screen.blit(title, title.get_rect(center=(WIDTH // 2, panel_y + 40)))
+
+        vol_text = font.render(f"Volume: {int(vol * 100)}%", True, UI_TEXT)
+        vol_text.set_alpha(int(255 * eased))
+        screen.blit(vol_text, vol_text.get_rect(center=(WIDTH // 2, panel_y + 100)))
+
+        bg_name = BACKGROUND_KEYS[bg_index]
+        bg_text = font.render(f"BG: {bg_name}", True, UI_TEXT)
+        bg_text.set_alpha(int(255 * eased))
+        screen.blit(bg_text, bg_text.get_rect(center=(WIDTH // 2, panel_y + 150)))
+
+        snow_text = font.render(f"Snow: {'ON' if snow_enabled else 'OFF'}", True, UI_TEXT)
+        snow_text.set_alpha(int(255 * eased))
+        screen.blit(snow_text, snow_text.get_rect(center=(WIDTH // 2, panel_y + 220)))
+
         btn_w, btn_h = 55, 55
-        btn_minus = pygame.Rect(WIDTH // 2 - 150, HEIGHT // 2 - 80, btn_w, btn_h)
-        btn_plus = pygame.Rect(WIDTH // 2 + 90, HEIGHT // 2 - 80, btn_w, btn_h)
-        btn_bg_left = pygame.Rect(WIDTH // 2 - 150, HEIGHT // 2 - 25, btn_w, btn_h)
-        btn_bg_right = pygame.Rect(WIDTH // 2 + 90, HEIGHT // 2 - 25, btn_w, btn_h)
-        btn_snow = pygame.Rect(WIDTH // 2 - 80, HEIGHT // 2 + 60, 160, 50)
-        btn_back = pygame.Rect(WIDTH // 2 - 100, HEIGHT // 2 + 130, 200, 50)
+        btn_minus = pygame.Rect(WIDTH // 2 - 150, panel_y + 70, btn_w, btn_h)
+        btn_plus = pygame.Rect(WIDTH // 2 + 90, panel_y + 70, btn_w, btn_h)
+        btn_bg_left = pygame.Rect(WIDTH // 2 - 150, panel_y + 125, btn_w, btn_h)
+        btn_bg_right = pygame.Rect(WIDTH // 2 + 90, panel_y + 125, btn_w, btn_h)
+        btn_snow = pygame.Rect(WIDTH // 2 - 80, panel_y + 210, 160, 50)
+        btn_back = pygame.Rect(WIDTH // 2 - 100, panel_y + 280, 200, 50)
+
         mouse_x, mouse_y = pygame.mouse.get_pos()
-        for btn, text, is_red in [(btn_minus, "-", False), (btn_plus, "+", False),
-                                  (btn_bg_left, "◀", False), (btn_bg_right, "▶", False),
-                                  (btn_back, "BACK", True)]:
+
+        # Кнопки с staggered-анимацией
+        btn_list = [
+            (btn_minus, "-", False, 0),
+            (btn_plus, "+", False, 1),
+            (btn_bg_left, "◀", False, 2),
+            (btn_bg_right, "▶", False, 3),
+            (btn_snow, f"{'❄ ON' if snow_enabled else '☀ OFF'}", False, 4),
+            (btn_back, "BACK", True, 5),
+        ]
+
+        for btn, text, is_red, idx in btn_list:
+            p = staggered_progress(anim, idx, len(btn_list), UI_STAGGER_DELAY)
+            # Смещение кнопки при появлении
+            offset_y = int((1 - p) * 20)
+            btn_draw = btn.move(0, offset_y)
+
             if is_red:
-                color = MENU_BTN_RED_HOVER if btn.collidepoint(mouse_x, mouse_y) else MENU_BTN_RED
+                color = MENU_BTN_RED_HOVER if btn_draw.collidepoint(mouse_x, mouse_y) else MENU_BTN_RED
             else:
-                color = MENU_BTN_BLUE_HOVER if btn.collidepoint(mouse_x, mouse_y) else MENU_BTN_BLUE
-            pygame.draw.rect(screen, color, btn, border_radius=8)
-            pygame.draw.rect(screen, (255, 255, 255), btn, 2, border_radius=8)
+                color = MENU_BTN_BLUE_HOVER if btn_draw.collidepoint(mouse_x, mouse_y) else MENU_BTN_BLUE
+
+            btn_alpha = int(255 * p)
+            btn_surf = pygame.Surface((btn_draw.width, btn_draw.height), pygame.SRCALPHA)
+            pygame.draw.rect(btn_surf, (*color, btn_alpha), btn_surf.get_rect(), border_radius=8)
+            pygame.draw.rect(btn_surf, (255, 255, 255, btn_alpha), btn_surf.get_rect(), 2, border_radius=8)
+            screen.blit(btn_surf, btn_draw.topleft)
+
             if font:
                 t_surf = font.render(text, True, UI_TEXT)
-                screen.blit(t_surf, t_surf.get_rect(center=btn.center))
-        snow_color = MENU_BTN_BLUE_HOVER if btn_snow.collidepoint(mouse_x, mouse_y) else MENU_BTN_BLUE
-        pygame.draw.rect(screen, snow_color, btn_snow, border_radius=8)
-        pygame.draw.rect(screen, (255, 255, 255), btn_snow, 2, border_radius=8)
-        if font:
-            snow_btn_text = font.render(f"{'❄ ON' if snow_enabled else '☀ OFF'}", True, UI_TEXT)
-            screen.blit(snow_btn_text, snow_btn_text.get_rect(center=btn_snow.center))
+                t_surf.set_alpha(btn_alpha)
+                screen.blit(t_surf, t_surf.get_rect(center=btn_draw.center))
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 if btn_minus.collidepoint(mouse_x, mouse_y):
-                    vol = max(0.0, vol - 0.1)
+                    vol = round(max(0.0, vol - 0.1), 2)
                     settings.MUSIC_VOLUME = vol
                     pygame.mixer.music.set_volume(vol)
                     set_music_volume(vol)
                 elif btn_plus.collidepoint(mouse_x, mouse_y):
-                    vol = min(1.0, vol + 0.1)
+                    vol = round(min(1.0, vol + 0.1), 2)
                     settings.MUSIC_VOLUME = vol
                     pygame.mixer.music.set_volume(vol)
                     set_music_volume(vol)
@@ -108,9 +149,9 @@ def settings_menu(screen, clock):
                     settings.SNOW_ENABLED = snow_enabled
                 elif btn_back.collidepoint(mouse_x, mouse_y):
                     running_settings = False
+
         pygame.display.update()
         clock.tick(60)
-
 
 def main_menu(screen, clock):
     from settings import font, big_font, small_font
@@ -131,6 +172,10 @@ def main_menu(screen, clock):
     github_rect = None
     if settings.github_icon_img:
         github_rect = pygame.Rect(WIDTH - 74, 10, 64, 64)
+
+    # === АНИМАЦИЯ ===
+    menu_anim = UIAnimation(duration=UI_ANIM_DURATION)
+
     while running_menu:
         bg_manager.draw(screen, WIDTH, HEIGHT)
         if settings.SNOW_ENABLED:
@@ -146,19 +191,23 @@ def main_menu(screen, clock):
                     flake['x'] = 0
                 elif flake['x'] < 0:
                     flake['x'] = WIDTH
+
         overlay = pygame.Surface((WIDTH, HEIGHT))
         overlay.set_alpha(BG_OVERLAY_ALPHA)
         overlay.fill((10, 12, 20))
         screen.blit(overlay, (0, 0))
+
         if big_font:
             title_shadow = big_font.render("MiniPRZ", True, (0, 0, 0))
             shadow_x = WIDTH // 2 - title_shadow.get_width() // 2 + 3
             shadow_y = 103
             screen.blit(title_shadow, (shadow_x, shadow_y))
+
             title_text = big_font.render("MiniPRZ", True, (255, 214, 107))
             title_x = WIDTH // 2 - title_text.get_width() // 2
             title_y = 100
             screen.blit(title_text, (title_x, title_y))
+
         if online_msg_alpha > 0:
             if small_font:
                 msg_surf = small_font.render("IN DEVELOPMENT", True, (255, 100, 100))
@@ -169,13 +218,17 @@ def main_menu(screen, clock):
             online_msg_alpha -= 5
             if online_msg_alpha < 0:
                 online_msg_alpha = 0
+
         if small_font:
             version_text = small_font.render(f"v{GAME_VERSION}", True, UI_TEXT)
             screen.blit(version_text, (WIDTH - version_text.get_width() - 10, HEIGHT - 30))
+
         if settings.github_icon_img and github_rect:
             screen.blit(settings.github_icon_img, github_rect)
+
         mouse_x, mouse_y = pygame.mouse.get_pos()
         buttons_rects = []
+
         if menu_state == "main":
             button_width, button_height = 260, 60
             buttons_config = [
@@ -188,16 +241,25 @@ def main_menu(screen, clock):
                 (WIDTH // 2 - button_width // 2, HEIGHT // 2 + button_height * 1.5, "✕ EXIT",
                  MENU_BTN_RED, MENU_BTN_RED_HOVER, "exit"),
             ]
-            for x, y, text, color, hover_color, action in buttons_config:
-                btn_rect = pygame.Rect(x, y, button_width, button_height)
-                buttons_rects.append((btn_rect, action))
+            for idx, (x, y, text, color, hover_color, action) in enumerate(buttons_config):
+                p = staggered_progress(menu_anim, idx, len(buttons_config), UI_STAGGER_DELAY)
+                offset_y = int((1 - p) * 30)
+                btn_rect = pygame.Rect(x, y + offset_y, button_width, button_height)
+                buttons_rects.append((pygame.Rect(x, y, button_width, button_height), action))
                 current_color = hover_color if btn_rect.collidepoint(mouse_x, mouse_y) else color
-                pygame.draw.rect(screen, (10, 12, 20), btn_rect.move(4, 4), border_radius=12)
-                pygame.draw.rect(screen, current_color, btn_rect, border_radius=12)
-                pygame.draw.rect(screen, (255, 255, 255), btn_rect, 2, border_radius=12)
+
+                btn_alpha = int(255 * p)
+                btn_surf = pygame.Surface((button_width, button_height), pygame.SRCALPHA)
+                pygame.draw.rect(btn_surf, (10, 12, 20, btn_alpha), btn_surf.get_rect(), border_radius=12)
+                pygame.draw.rect(btn_surf, (*current_color, btn_alpha), btn_surf.get_rect(), border_radius=12)
+                pygame.draw.rect(btn_surf, (255, 255, 255, btn_alpha), btn_surf.get_rect(), 2, border_radius=12)
+                screen.blit(btn_surf, btn_rect.topleft)
+
                 if font:
                     text_surface = font.render(text, True, UI_TEXT)
+                    text_surface.set_alpha(btn_alpha)
                     screen.blit(text_surface, text_surface.get_rect(center=btn_rect.center))
+
         elif menu_state == "play_submenu":
             btn_w, btn_h = 200, 80
             gap = 40
@@ -215,16 +277,28 @@ def main_menu(screen, clock):
             btn_texts = ["⚔️ Bot", "❓ ???", "◀ BACK"]
             btn_colors = [MENU_BTN_BLUE, MENU_BTN_BLUE, MENU_BTN_RED]
             btn_hovers = [MENU_BTN_BLUE_HOVER, MENU_BTN_BLUE_HOVER, MENU_BTN_RED_HOVER]
+
             for i, (btn_rect, action) in enumerate(buttons_rects):
+                p = staggered_progress(menu_anim, i, len(buttons_rects), UI_STAGGER_DELAY)
+                offset_y = int((1 - p) * 30)
+                btn_draw = btn_rect.move(0, offset_y)
+
                 color = btn_colors[i]
                 hover_color = btn_hovers[i]
-                current_color = hover_color if btn_rect.collidepoint(mouse_x, mouse_y) else color
-                pygame.draw.rect(screen, (10, 12, 20), btn_rect.move(4, 4), border_radius=12)
-                pygame.draw.rect(screen, current_color, btn_rect, border_radius=12)
-                pygame.draw.rect(screen, (255, 255, 255), btn_rect, 2, border_radius=12)
+                current_color = hover_color if btn_draw.collidepoint(mouse_x, mouse_y) else color
+
+                btn_alpha = int(255 * p)
+                btn_surf = pygame.Surface((btn_draw.width, btn_draw.height), pygame.SRCALPHA)
+                pygame.draw.rect(btn_surf, (10, 12, 20, btn_alpha), btn_surf.get_rect(), border_radius=12)
+                pygame.draw.rect(btn_surf, (*current_color, btn_alpha), btn_surf.get_rect(), border_radius=12)
+                pygame.draw.rect(btn_surf, (255, 255, 255, btn_alpha), btn_surf.get_rect(), 2, border_radius=12)
+                screen.blit(btn_surf, btn_draw.topleft)
+
                 if font:
                     text_surface = font.render(btn_texts[i], True, UI_TEXT)
-                    screen.blit(text_surface, text_surface.get_rect(center=btn_rect.center))
+                    text_surface.set_alpha(btn_alpha)
+                    screen.blit(text_surface, text_surface.get_rect(center=btn_draw.center))
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 bg_manager.cleanup()
@@ -239,6 +313,7 @@ def main_menu(screen, clock):
                         if menu_state == "main":
                             if action == "play":
                                 menu_state = "play_submenu"
+                                menu_anim.restart()
                             elif action == "online":
                                 online_msg_alpha = 255
                             elif action == "settings":
@@ -254,6 +329,7 @@ def main_menu(screen, clock):
                                 online_msg_alpha = 255
                             elif action == "back":
                                 menu_state = "main"
+                                menu_anim.restart()
             if event.type == pygame.MOUSEMOTION:
                 cursor_set = False
                 if github_rect and github_rect.collidepoint(mouse_x, mouse_y):
@@ -264,7 +340,9 @@ def main_menu(screen, clock):
                     cursor_set = True
                 if not cursor_set:
                     pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
+
         pygame.display.update()
         clock.tick(60)
+
     bg_manager.cleanup()
     return False

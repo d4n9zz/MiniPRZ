@@ -1,56 +1,49 @@
 import pygame
-
 from settings import (
-    UI_BG,
-    UI_BORDER,
-    UI_TEXT,
-    UI_BUTTON_NORMAL,
-    UI_BUTTON_HOVER,
-    UI_BUTTON_SHADOW,
-    TIMER_SAFE,
-    TIMER_WARNING,
-    TIMER_DANGER,
-    FIELD_HEIGHT,
-    WIDTH,
-    INTERFACE_HEIGHT,
-    MENU_BTN_BLUE,
-    MENU_BTN_BLUE_HOVER,
-    DEBUG_TEXT_COLOR,
-    DEBUG_BG_COLOR,
+UI_BG,
+UI_BORDER,
+UI_TEXT,
+UI_BUTTON_NORMAL,
+UI_BUTTON_HOVER,
+UI_BUTTON_SHADOW,
+TIMER_SAFE,
+TIMER_WARNING,
+TIMER_DANGER,
+FIELD_HEIGHT,
+WIDTH,
+INTERFACE_HEIGHT,
+MENU_BTN_BLUE,
+MENU_BTN_BLUE_HOVER,
+DEBUG_TEXT_COLOR,
+DEBUG_BG_COLOR,
+UI_ANIM_DURATION,
+UI_STAGGER_DELAY,
 )
-
+from animation import staggered_progress
 
 def draw_top_interface(screen, stars, stars_change):
     from settings import small_font, font, WIDTH
-
     stars_text = f"Stars (+{stars_change})"
     stars_label = small_font.render(stars_text, True, (240, 248, 255))
     stars_value = font.render(str(stars), True, (255, 215, 0))
     label_width = stars_label.get_width()
     value_width = stars_value.get_width()
-
     padding = 20
     panel_height = 70
     max_width = max(label_width, value_width)
     panel_width = max_width + padding * 2
-
     panel_x = WIDTH // 2 - panel_width // 2
     panel_y = 10
-
     panel_rect = pygame.Rect(panel_x, panel_y, panel_width, panel_height)
     pygame.draw.rect(screen, (20, 25, 45), panel_rect, border_radius=12)
     pygame.draw.rect(screen, (100, 149, 237), panel_rect, 2, border_radius=12)
-
     label_x = WIDTH // 2 - label_width // 2
     value_x = WIDTH // 2 - value_width // 2
-
     screen.blit(stars_label, (label_x, panel_y + 10))
     screen.blit(stars_value, (value_x, panel_y + 32))
 
-
 def draw_menu_button(screen):
     from settings import small_font
-
     text_surf = small_font.render("PAUSE", True, UI_TEXT) if small_font else None
     padding = 10
     if text_surf:
@@ -70,39 +63,51 @@ def draw_menu_button(screen):
         screen.blit(text_surf, text_surf.get_rect(center=btn_rect.center))
     return btn_rect
 
-
-def draw_pause_menu(screen, resume_btn, settings_btn, menu_btn):
+def draw_pause_menu(screen, resume_btn, settings_btn, menu_btn, pause_anim=None):
     from settings import font, big_font
     overlay = pygame.Surface((WIDTH, FIELD_HEIGHT))
     overlay.set_alpha(200)
     overlay.fill((15, 20, 35))
     screen.blit(overlay, (0, 0))
+
     panel_rect = pygame.Rect(WIDTH // 2 - 150, FIELD_HEIGHT // 2 - 140, 300, 300)
     pygame.draw.rect(screen, UI_BG, panel_rect, border_radius=12)
     pygame.draw.rect(screen, UI_BORDER, panel_rect, 3, border_radius=12)
+
     if big_font:
         title = big_font.render("PAUSED", True, UI_TEXT)
         screen.blit(title, title.get_rect(center=(WIDTH // 2, FIELD_HEIGHT // 2 - 90)))
+
     mouse_x, mouse_y = pygame.mouse.get_pos()
     buttons = [
-        (resume_btn, "RESUME", MENU_BTN_BLUE, MENU_BTN_BLUE_HOVER),
-        (settings_btn, "SETTINGS", MENU_BTN_BLUE, MENU_BTN_BLUE_HOVER),
-        (menu_btn, "MAIN MENU", MENU_BTN_BLUE, MENU_BTN_BLUE_HOVER),
+        (resume_btn, "RESUME", MENU_BTN_BLUE, MENU_BTN_BLUE_HOVER, 0),
+        (settings_btn, "SETTINGS", MENU_BTN_BLUE, MENU_BTN_BLUE_HOVER, 1),
+        (menu_btn, "MAIN MENU", MENU_BTN_BLUE, MENU_BTN_BLUE_HOVER, 2),
     ]
-    for btn, text, color, hover_color in buttons:
-        current_color = hover_color if btn.collidepoint(mouse_x, mouse_y) else color
-        pygame.draw.rect(screen, UI_BUTTON_SHADOW, btn.move(3, 3), border_radius=10)
-        pygame.draw.rect(screen, current_color, btn, border_radius=10)
-        pygame.draw.rect(screen, (255, 255, 255), btn, 2, border_radius=10)
+
+    for btn, text, color, hover_color, idx in buttons:
+        p = staggered_progress(pause_anim, idx, len(buttons), UI_STAGGER_DELAY)
+        offset_y = int((1 - p) * 20)
+        btn_draw = btn.move(0, offset_y)
+
+        current_color = hover_color if btn_draw.collidepoint(mouse_x, mouse_y) else color
+
+        btn_alpha = int(255 * p)
+        btn_surf = pygame.Surface((btn_draw.width, btn_draw.height), pygame.SRCALPHA)
+        pygame.draw.rect(btn_surf, (*UI_BUTTON_SHADOW, btn_alpha), btn_surf.get_rect(), border_radius=10)
+        pygame.draw.rect(btn_surf, (*current_color, btn_alpha), btn_surf.get_rect(), border_radius=10)
+        pygame.draw.rect(btn_surf, (255, 255, 255, btn_alpha), btn_surf.get_rect(), 2, border_radius=10)
+        screen.blit(btn_surf, btn_draw.topleft)
+
         if font:
             text_surf = font.render(text, True, UI_TEXT)
-            screen.blit(text_surf, text_surf.get_rect(center=btn.center))
-    return resume_btn, settings_btn, menu_btn
+            text_surf.set_alpha(btn_alpha)
+            screen.blit(text_surf, text_surf.get_rect(center=btn_draw.center))
 
+    return resume_btn, settings_btn, menu_btn
 
 def draw_unit_card(screen, card_x, card_y, unit):
     from settings import card_font
-
     card_width, card_height = 70, 60
     card_rect = pygame.Rect(card_x, card_y, card_width, card_height)
     pygame.draw.rect(screen, UI_BG, card_rect, border_radius=8)
@@ -124,43 +129,42 @@ def draw_unit_card(screen, card_x, card_y, unit):
             hp_text, hp_text.get_rect(center=(card_x + card_width // 2, card_y + 44))
         )
 
-
 def draw_interface(
-    screen,
-    current_turn,
-    player_units,
-    bot_units,
-    bot2_units,
-    turn_timer_start,
-    turn_time,
-    selected_unit,
-    paused,
-    pause_start_time,
-    total_paused_time,
+screen,
+current_turn,
+player_units,
+bot_units,
+bot2_units,
+turn_timer_start,
+turn_time,
+selected_unit,
+paused,
+pause_start_time,
+total_paused_time,
 ):
     from settings import font, small_font
-
     panel_rect = pygame.Rect(0, FIELD_HEIGHT, WIDTH, INTERFACE_HEIGHT)
     pygame.draw.rect(screen, UI_BG, panel_rect)
     pygame.draw.rect(screen, UI_BORDER, panel_rect, 3)
+
     if font:
         turn_text = font.render(f"Turn: {current_turn.upper()}", True, UI_TEXT)
         screen.blit(turn_text, (25, FIELD_HEIGHT + 22))
+
     btn_rect = pygame.Rect(WIDTH - 170, FIELD_HEIGHT + 12, 150, 56)
     mouse_x, mouse_y = pygame.mouse.get_pos()
     btn_color = UI_BUTTON_HOVER if btn_rect.collidepoint(mouse_x, mouse_y) else UI_BUTTON_NORMAL
     pygame.draw.rect(screen, UI_BUTTON_SHADOW, btn_rect.move(4, 4), border_radius=12)
     pygame.draw.rect(screen, btn_color, btn_rect, border_radius=12)
     pygame.draw.rect(screen, (255, 255, 255), btn_rect, 2, border_radius=12)
+
     if font:
         button_text = font.render("END TURN", True, UI_TEXT)
         screen.blit(button_text, button_text.get_rect(center=btn_rect.center))
+
     for i, unit in enumerate(player_units):
         draw_unit_card(screen, 280 + i * 80, FIELD_HEIGHT + 10, unit)
-    for i, unit in enumerate(bot_units):
-        draw_unit_card(screen, WIDTH - 420 + i * 80, FIELD_HEIGHT + 10, unit)
-    for i, unit in enumerate(bot2_units):
-        draw_unit_card(screen, WIDTH - 500 + i * 80, FIELD_HEIGHT + 10, unit)
+
     if selected_unit:
         info_x = WIDTH // 2
         info_y = FIELD_HEIGHT + 20
@@ -171,6 +175,7 @@ def draw_interface(
                 f"HP: {selected_unit.hp}/{selected_unit.max_hp}", True, UI_TEXT
             )
             screen.blit(hp_text, hp_text.get_rect(center=(info_x, info_y + 30)))
+
     if current_turn == "player":
         _draw_timer(
             screen,
@@ -181,11 +186,11 @@ def draw_interface(
             pause_start_time,
             total_paused_time,
         )
+
     return btn_rect
 
-
 def _draw_timer(
-    screen, turn_timer_start, turn_time, small_font, paused, pause_start_time, total_paused_time
+screen, turn_timer_start, turn_time, small_font, paused, pause_start_time, total_paused_time
 ):
     interface_time = pygame.time.get_ticks()
     if paused:
@@ -221,10 +226,8 @@ def _draw_timer(
         screen.blit(bg_surf, (bar_x - time_text.get_width() - 20, time_y))
         screen.blit(time_text, (bar_x - time_text.get_width() - 16, time_y))
 
-
 def draw_debug_overlay(screen, visible_tiles, player_units, bot_units):
     from settings import small_font, TILE_SIZE, COLS, ROWS
-
     if not small_font:
         return
     mouse_x, mouse_y = pygame.mouse.get_pos()
@@ -247,9 +250,9 @@ def draw_debug_overlay(screen, visible_tiles, player_units, bot_units):
         screen.blit(bg_surf, (10, y_offset))
         screen.blit(text_surf, (12, y_offset + 2))
         y_offset += text_surf.get_height() + 4
+
     if 0 <= grid_x < COLS and 0 <= grid_y < ROWS:
         from utils import get_unit_at
-
         unit = get_unit_at([grid_x, grid_y], player_units + bot_units)
         if unit:
             unit_info = [
