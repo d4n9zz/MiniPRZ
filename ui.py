@@ -14,8 +14,6 @@ WIDTH,
 INTERFACE_HEIGHT,
 MENU_BTN_BLUE,
 MENU_BTN_BLUE_HOVER,
-DEBUG_TEXT_COLOR,
-DEBUG_BG_COLOR,
 UI_ANIM_DURATION,
 UI_STAGGER_DELAY,
 )
@@ -76,7 +74,7 @@ def draw_pause_menu(screen, resume_btn, settings_btn, menu_btn, pause_anim=None)
 
     if big_font:
         title = big_font.render("PAUSED", True, UI_TEXT)
-        screen.blit(title, title.get_rect(center=(WIDTH // 2, FIELD_HEIGHT // 2 - 90)))
+        screen.blit(title, title.get_rect(center=(WIDTH // 2, FIELD_HEIGHT // 2 - 100)))
 
     mouse_x, mouse_y = pygame.mouse.get_pos()
     buttons = [
@@ -226,53 +224,3 @@ screen, turn_timer_start, turn_time, small_font, paused, pause_start_time, total
         screen.blit(bg_surf, (bar_x - time_text.get_width() - 20, time_y))
         screen.blit(time_text, (bar_x - time_text.get_width() - 16, time_y))
 
-def draw_debug_overlay(screen, visible_tiles, player_units, bot_units):
-    from settings import small_font, TILE_SIZE, COLS, ROWS
-    if not small_font:
-        return
-    mouse_x, mouse_y = pygame.mouse.get_pos()
-    grid_x = mouse_x // TILE_SIZE
-    grid_y = mouse_y // TILE_SIZE
-    info_lines = [
-        f"Mouse: {mouse_x}, {mouse_y}",
-        f"Grid: {grid_x}, {grid_y}",
-        f"Visible Tiles: {len(visible_tiles)}",
-        f"Player Units: {len(player_units)}",
-        f"Bot Units: {len(bot_units)}",
-    ]
-    y_offset = 10
-    for line in info_lines:
-        text_surf = small_font.render(line, True, DEBUG_TEXT_COLOR)
-        bg_surf = pygame.Surface(
-            (text_surf.get_width() + 4, text_surf.get_height() + 4), pygame.SRCALPHA
-        )
-        bg_surf.fill(DEBUG_BG_COLOR)
-        screen.blit(bg_surf, (10, y_offset))
-        screen.blit(text_surf, (12, y_offset + 2))
-        y_offset += text_surf.get_height() + 4
-
-    if 0 <= grid_x < COLS and 0 <= grid_y < ROWS:
-        from utils import get_unit_at
-        unit = get_unit_at([grid_x, grid_y], player_units + bot_units)
-        if unit:
-            unit_info = [
-                f"Unit: {unit.name}",
-                f"HP: {unit.hp}/{unit.max_hp}",
-                f"Type: {unit.unit_type}",
-                f"Owner: {'Player' if unit.is_player else 'Bot'}",
-            ]
-            box_h = len(unit_info) * (small_font.get_height() + 4) + 8
-            box_w = 150
-            box_x = mouse_x + 10
-            box_y = mouse_y + 10
-            if box_x + box_w > WIDTH:
-                box_x = mouse_x - box_w - 10
-            if box_y + box_h > FIELD_HEIGHT:
-                box_y = mouse_y - box_h - 10
-            panel_surf = pygame.Surface((box_w, box_h), pygame.SRCALPHA)
-            panel_surf.fill((0, 0, 0, 200))
-            screen.blit(panel_surf, (box_x, box_y))
-            pygame.draw.rect(screen, DEBUG_TEXT_COLOR, (box_x, box_y, box_w, box_h), 1)
-            for i, line in enumerate(unit_info):
-                text_surf = small_font.render(line, True, DEBUG_TEXT_COLOR)
-                screen.blit(text_surf, (box_x + 4, box_y + 4 + i * (small_font.get_height() + 4)))

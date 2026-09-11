@@ -19,10 +19,6 @@ COLS,
 ROWS,
 BOT_GLOW,
 BOT2_GLOW,
-DEBUG_FOG_KEY,
-DEBUG_HEAL_KEY,
-DEBUG_INSTANT_WIN_KEY,
-DEBUG_SKIP_TURN_KEY,
 ATTACK_RANGE_COLOR,
 UNIT_TYPES,
 MENU_BTN_RED,
@@ -40,10 +36,9 @@ from ui import (
 draw_interface,
 draw_menu_button,
 draw_pause_menu,
-draw_debug_overlay,
 draw_top_interface,
 )
-from music import play_game, fade_music_volume
+from music import play_game, fade_music_volume, pause_music, resume_music
 from menu import settings_menu
 from animation import UIAnimation
 
@@ -54,9 +49,6 @@ GAME_CONFIG = {
 }
 
 def _get_random_spawn_position(is_player, bot_index=None, total_bots=None):
-    """Генерирует случайную позицию спавна.
-    Для игрока — нижняя часть карты.
-    Для ботов — верхняя половина с распределением по ширине."""
     if is_player:
         min_y = ROWS - 8
         max_y = ROWS - 4
@@ -120,7 +112,7 @@ class Game:
         "pause_settings_btn", "pause_menu_btn", "total_paused_time",
         "pause_start_time", "music_fade_target", "music_fade_current",
         "music_fade_speed", "fog_unexplored_surf", "fog_explored_surf",
-        "debug_mode", "debug_fog_override", "bg_surface", "grid_surface",
+        "bg_surface", "grid_surface",
         "player_spawn", "player_city_img",
         "bot_city_img", "player_gold",
         "shop_open", "shop_city_pos", "shop_buttons", "shop_close_btn",
@@ -137,6 +129,33 @@ class Game:
         self._create_static_surfaces()
         self._load_city_images()
         self._reset_game()
+
+    def _get_all_enemy_units(self):
+        all_enemies = []
+        for team in self.enemy_teams:
+            all_enemies.extend(team['units'])
+        return all_enemies
+
+    def _get_all_units(self):
+        all_units = self.player_units.copy()
+        all_units.extend(self._get_all_enemy_units())
+        return all_units
+
+    def _spawn_player_unit(self, utype):
+        spawn_x = random.randint(self.player_spawn[0], self.player_spawn[0] + 2)
+        spawn_y = random.randint(self.player_spawn[1], self.player_spawn[1] + 2)
+        attempts = 0
+        from utils import get_unit_at
+        all_units = self._get_all_units()
+        while get_unit_at([spawn_x, spawn_y], all_units) and attempts < 10:
+            spawn_x = random.randint(self.player_spawn[0], self.player_spawn[0] + 2)
+            spawn_y = random.randint(self.player_spawn[1], self.player_spawn[1] + 2)
+            attempts += 1
+        if attempts < 10:
+            new_unit = Unit([spawn_x, spawn_y], unit_type=utype, is_player=True)
+            self.player_units.append(new_unit)
+            return True
+        return False
 
     def _create_static_surfaces(self):
         self.grid_surface = pygame.Surface((WIDTH, FIELD_HEIGHT), pygame.SRCALPHA)
@@ -178,9 +197,7 @@ class Game:
     def _reset_game(self):
         min_distance = 5
         num_bots = GAME_CONFIG['num_bots']
-        # Спавн игрока (всегда снизу)
         self.player_spawn = _get_random_spawn_position(is_player=True)
-        # Спавн ботов с распределением по ширине
         self.enemy_teams = []
         bot_spawns = []
         for i in range(num_bots):
@@ -212,16 +229,8 @@ class Game:
                 bot_spawns.append(new_spawn)
             color = GAME_CONFIG['bot_colors'][i % len(GAME_CONFIG['bot_colors'])]
             personality = GAME_CONFIG['bot_personalities'][i % len(GAME_CONFIG['bot_personalities'])]
-            all_existing_units = []
-            for team in self.enemy_teams:
-                all_existing_units.extend(team['units'])
             self.enemy_teams.append({
-                'units': create_units(
-                    2,
-                    all_existing_units,
-                    is_player=False,
-                    spawn_zone=new_spawn
-                ),
+                'units': create_units(2, self._get_all_enemy_units(), is_player=False, spawn_zone=new_spawn),
                 'color': color,
                 'personality': personality,
                 'spawn': new_spawn,
@@ -255,8 +264,6 @@ class Game:
         self.fog_unexplored_surf.fill(FOG_UNEXPLORED)
         self.fog_explored_surf = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
         self.fog_explored_surf.fill(FOG_EXPLORED_NO_VIS)
-        self.debug_mode = False
-        self.debug_fog_override = False
         self.player_gold = 15
         self.shop_open = False
         self.shop_city_pos = None
@@ -273,10 +280,16 @@ class Game:
         if state:
             self.pause_start_time = pygame.time.get_ticks()
             self.music_fade_target = 0.0
+            self.music_fade_speed = 0.04
             self.pause_anim.restart()  # ← перезапуск анимации при открытии
         else:
             self.total_paused_time += pygame.time.get_ticks() - self.pause_start_time
             self.music_fade_target = 1.0
+            self.music_fade_speed = 0.04
+            try:
+                resume_music()
+            except Exception:
+                pass
         self.paused = state
 
     def _update_music_fade(self):
@@ -288,7 +301,16 @@ class Game:
             self.music_fade_current = max(
                 self.music_fade_target, self.music_fade_current - self.music_fade_speed
             )
+
         fade_music_volume(self.music_fade_current)
+
+        if self.paused and self.music_fade_current <= 0.03:
+            try:
+                pause_music()
+            except Exception:
+                pass
+            self.music_fade_current = 0.0
+            fade_music_volume(0.0)
 
     def _get_visible_tiles(self):
         visible = set()
@@ -448,22 +470,24 @@ class Game:
         for i, utype in enumerate(unit_types):
             data = UNIT_TYPES[utype]
             btn_y = start_y + i * 70
-            btn_rect = pygame.Rect(panel_x + 20, btn_y, panel_w - 140, 60)
+            btn_rect = pygame.Rect(panel_x + 20, btn_y, panel_w - 80, 60)
             mouse_x, mouse_y = pygame.mouse.get_pos()
             color = (100, 180, 255) if btn_rect.collidepoint(mouse_x, mouse_y) else (70, 130, 180)
             pygame.draw.rect(self.screen, color, btn_rect, border_radius=8)
             pygame.draw.rect(self.screen, (255, 255, 255), btn_rect, 2, border_radius=8)
             key_number = str(i + 1)
             key_text = small_font.render(f"[{key_number}]", True, (255, 215, 0))
-            self.screen.blit(key_text, (panel_x + 30, btn_y + 20))
+            key_x = panel_x + 30
+            text_x = panel_x + 90
+            self.screen.blit(key_text, (key_x, btn_y + 20))
             unit_name = small_font.render(
                 f"{data['name']} (HP:{data['hp']} DMG:{data['damage'][0]}-{data['damage'][1]})",
                 True,
                 (240, 248, 255),
             )
             cost_text = small_font.render(f"Cost: {data['hp']} gold", True, (255, 215, 0))
-            self.screen.blit(unit_name, (panel_x + 70, btn_y + 12))
-            self.screen.blit(cost_text, (panel_x + 70, btn_y + 34))
+            self.screen.blit(unit_name, (text_x, btn_y + 12))
+            self.screen.blit(cost_text, (text_x, btn_y + 34))
             self.shop_buttons.append((btn_rect, utype, data["hp"]))
         mouse_x, mouse_y = pygame.mouse.get_pos()
         self.shop_close_btn = pygame.Rect(panel_x + panel_w - 95, panel_y + panel_h - 65, 80, 40)
@@ -498,22 +522,7 @@ class Game:
         for btn_rect, utype, cost in self.shop_buttons:
             if btn_rect.collidepoint(mouse_x, mouse_y):
                 if self.player_gold >= cost:
-                    spawn_x = random.randint(self.player_spawn[0], self.player_spawn[0] + 2)
-                    spawn_y = random.randint(self.player_spawn[1], self.player_spawn[1] + 2)
-                    attempts = 0
-                    all_units = self.player_units.copy()
-                    for team in self.enemy_teams:
-                        all_units.extend(team['units'])
-                    while (
-                            get_unit_at([spawn_x, spawn_y], all_units)
-                            and attempts < 10
-                    ):
-                        spawn_x = random.randint(self.player_spawn[0], self.player_spawn[0] + 2)
-                        spawn_y = random.randint(self.player_spawn[1], self.player_spawn[1] + 2)
-                        attempts += 1
-                    if attempts < 10:
-                        new_unit = Unit([spawn_x, spawn_y], unit_type=utype, is_player=True)
-                        self.player_units.append(new_unit)
+                    if self._spawn_player_unit(utype):
                         self.player_gold -= cost
                 return
 
@@ -525,35 +534,20 @@ class Game:
         utype = unit_types[index]
         cost = UNIT_TYPES[utype]["hp"]
         if self.player_gold >= cost:
-            spawn_x = random.randint(self.player_spawn[0], self.player_spawn[0] + 2)
-            spawn_y = random.randint(self.player_spawn[1], self.player_spawn[1] + 2)
-            attempts = 0
-            all_units = self.player_units.copy()
-            for team in self.enemy_teams:
-                all_units.extend(team['units'])
-            while (
-                    get_unit_at([spawn_x, spawn_y], all_units)
-                    and attempts < 10
-            ):
-                spawn_x = random.randint(self.player_spawn[0], self.player_spawn[0] + 2)
-                spawn_y = random.randint(self.player_spawn[1], self.player_spawn[1] + 2)
-                attempts += 1
-            if attempts < 10:
-                new_unit = Unit([spawn_x, spawn_y], unit_type=utype, is_player=True)
-                self.player_units.append(new_unit)
+            if self._spawn_player_unit(utype):
                 self.player_gold -= cost
 
     def _draw_attack_indicators(self, visible):
         if self.current_turn != "player" or not self.selected_unit:
             return
-        if tuple(self.selected_unit.pos) not in visible and not self.debug_fog_override:
+        if tuple(self.selected_unit.pos) not in visible:
             return
         all_enemies = []
         for team in self.enemy_teams:
             all_enemies.extend(team['units'])
         attackable_tiles = _get_attackable_tiles(self.selected_unit, all_enemies)
         for tx, ty in attackable_tiles:
-            if (tx, ty) not in visible and not self.debug_fog_override:
+            if (tx, ty) not in visible:
                 continue
             rect = pygame.Rect(tx * TILE_SIZE, ty * TILE_SIZE, TILE_SIZE, TILE_SIZE)
             highlight_surf = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
@@ -562,8 +556,6 @@ class Game:
             self.screen.blit(highlight_surf, rect.topleft)
 
     def _draw_fog_of_war(self, visible):
-        if self.debug_fog_override:
-            return
         for y in range(ROWS):
             for x in range(COLS):
                 tile_pos = (x, y)
@@ -595,17 +587,23 @@ class Game:
 
     def _draw_units(self, visible):
         from settings import player_unit_imgs, bot_unit_imgs
-        all_units = self.player_units.copy()
-        for team in self.enemy_teams:
-            all_units.extend(team['units'])
+        all_units = self._get_all_units()
         for unit in all_units:
-            if tuple(unit.pos) not in visible and not unit.is_player and not self.debug_fog_override:
+            if tuple(unit.pos) not in visible and not unit.is_player:
                 continue
             if unit.is_player:
                 unit_img_dict = player_unit_imgs
+                unit_img = unit_img_dict.get(unit.unit_type)
             else:
-                unit_img_dict = bot_unit_imgs
-            unit_img = unit_img_dict.get(unit.unit_type)
+                unit_img = None
+                for team_index, team in enumerate(self.enemy_teams):
+                    if unit in team['units']:
+                        team_img_dict = bot_unit_imgs.get(team_index, {}) if isinstance(bot_unit_imgs, dict) else {}
+                        if isinstance(team_img_dict, dict):
+                            unit_img = team_img_dict.get(unit.unit_type)
+                        if unit_img is None and isinstance(bot_unit_imgs, dict):
+                            unit_img = bot_unit_imgs.get(unit.unit_type)
+                        break
             draw_x = int(unit.px) + unit.shake_offset[0]
             draw_y = int(unit.py) + unit.shake_offset[1]
             if unit_img:
@@ -646,14 +644,12 @@ class Game:
         from settings import small_font
         if not small_font or not self.context_tooltip_unit:
             return
-        all_units = self.player_units.copy()
-        for team in self.enemy_teams:
-            all_units.extend(team['units'])
+        all_units = self._get_all_units()
         if self.context_tooltip_unit not in all_units:
             self.context_tooltip_unit = None
             return
         unit = self.context_tooltip_unit
-        if tuple(unit.pos) not in visible and not unit.is_player and not self.debug_fog_override:
+        if tuple(unit.pos) not in visible and not unit.is_player:
             self.context_tooltip_unit = None
             return
         info_lines = []
@@ -708,11 +704,6 @@ class Game:
             if event.type == pygame.QUIT:
                 return False
             if event.type == pygame.KEYDOWN:
-                keys = pygame.key.get_pressed()
-                if event.key == pygame.K_F11 and keys[pygame.K_F12]:
-                    self.debug_mode = not self.debug_mode
-                elif event.key == pygame.K_F12 and keys[pygame.K_F11]:
-                    self.debug_mode = not self.debug_mode
                 if event.key == pygame.K_ESCAPE:
                     if self.shop_open:
                         self.shop_open = False
@@ -730,45 +721,25 @@ class Game:
                     self.shop_open = not self.shop_open
                     if not self.shop_open:
                         self.shop_city_pos = None
-                if event.key == DEBUG_FOG_KEY:
-                    self.debug_fog_override = not self.debug_fog_override
-                if event.key == DEBUG_HEAL_KEY and self.current_turn == "player":
-                    for u in self.player_units:
-                        u.hp = u.max_hp
-                if event.key == DEBUG_INSTANT_WIN_KEY:
-                    for team in self.enemy_teams:
-                        team['units'] = []
-                    self.game_over = True
-                    self.winner = "DEBUG WIN"
-                if event.key == DEBUG_SKIP_TURN_KEY and self.current_turn == "player":
-                    self._end_player_turn()
                 if self.shop_open and self.current_turn == "player" and not self.game_over and not self.paused:
                     unit_types = list(UNIT_TYPES.keys())
-                    if event.key == pygame.K_1 and len(unit_types) >= 1:
-                        self._buy_unit_by_index(0)
-                    elif event.key == pygame.K_2 and len(unit_types) >= 2:
-                        self._buy_unit_by_index(1)
-                    elif event.key == pygame.K_3 and len(unit_types) >= 3:
-                        self._buy_unit_by_index(2)
-                    elif event.key == pygame.K_4 and len(unit_types) >= 4:
-                        self._buy_unit_by_index(3)
+                    keys = (pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4)
+                    for i, k in enumerate(keys):
+                        if event.key == k and len(unit_types) > i:
+                            self._buy_unit_by_index(i)
+                            break
                 if self.current_turn == "player" and not self.game_over and not self.paused and not self.shop_open:
-                    if event.key == pygame.K_1 and len(self.player_units) > 0:
-                        self.selected_unit = self.player_units[0]
-                    elif event.key == pygame.K_2 and len(self.player_units) > 1:
-                        self.selected_unit = self.player_units[1]
-                    elif event.key == pygame.K_3 and len(self.player_units) > 2:
-                        self.selected_unit = self.player_units[2]
-                    elif event.key == pygame.K_4 and len(self.player_units) > 3:
-                        self.selected_unit = self.player_units[3]
+                    keys = (pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4)
+                    for i, k in enumerate(keys):
+                        if event.key == k and len(self.player_units) > i:
+                            self.selected_unit = self.player_units[i]
+                            break
             if event.type == pygame.MOUSEBUTTONDOWN and not self.game_over:
                 mouse_x, mouse_y = pygame.mouse.get_pos()
                 if event.button == 3:
                     from utils import get_unit_at
                     grid_pos = [mouse_x // TILE_SIZE, mouse_y // TILE_SIZE]
-                    all_units = self.player_units.copy()
-                    for team in self.enemy_teams:
-                        all_units.extend(team['units'])
+                    all_units = self._get_all_units()
                     clicked_unit = get_unit_at(grid_pos, all_units)
                     if clicked_unit:
                         if self.context_tooltip_unit == clicked_unit:
@@ -805,6 +776,8 @@ class Game:
                     else:
                         self._handle_shop_click(mouse_x, mouse_y)
                         self._handle_field_click(mouse_x, mouse_y)
+                elif not self.paused and not self.shop_open:
+                    self._handle_field_click(mouse_x, mouse_y)
         return True
 
     def _handle_field_click(self, mouse_x, mouse_y):
@@ -816,7 +789,10 @@ class Game:
                 self.selected_unit = None
             else:
                 self.selected_unit = clicked_unit
-        elif self.selected_unit and not self.selected_unit.has_moved:
+            return
+        if self.current_turn != "player":
+            return
+        if self.selected_unit and not self.selected_unit.has_moved:
             dx_move = abs(grid_pos[0] - self.selected_unit.pos[0])
             dy_move = abs(grid_pos[1] - self.selected_unit.pos[1])
             if dx_move <= 1 and dy_move <= 1 and (dx_move + dy_move) != 0:
@@ -883,9 +859,7 @@ class Game:
         self.battle_effects = [e for e in self.battle_effects if e.update()]
         self.death_effects = [e for e in self.death_effects if e.update()]
         if not self.game_over:
-            all_enemy_units = []
-            for team in self.enemy_teams:
-                all_enemy_units.extend(team['units'])
+            all_enemy_units = self._get_all_enemy_units()
             if not all_enemy_units:
                 self.game_over = True
                 self.winner = "YOU WIN!"
@@ -904,9 +878,7 @@ class Game:
                         and current_team['action_index'] < len(current_team['units'])
                 ):
                     all_enemies = self.player_units.copy()
-                    for i, other_team in enumerate(self.enemy_teams):
-                        if i != self.current_bot_index:
-                            all_enemies.extend(other_team['units'])
+                    all_enemies.extend(u for i, t in enumerate(self.enemy_teams) if i != self.current_bot_index for u in t['units'])
                     bot_unit = current_team['units'][current_team['action_index']]
                     bot_step(
                         bot_unit,
@@ -962,9 +934,9 @@ class Game:
             self.screen.blit(restart_text, (restart_x, restart_y))
 
     def _draw_pause_menu(self):
-        resume_btn = pygame.Rect(WIDTH // 2 - 120, FIELD_HEIGHT // 2 - 60, 240, 50)
-        settings_btn = pygame.Rect(WIDTH // 2 - 120, FIELD_HEIGHT // 2, 240, 50)
-        menu_btn = pygame.Rect(WIDTH // 2 - 120, FIELD_HEIGHT // 2 + 60, 240, 50)
+        resume_btn = pygame.Rect(WIDTH // 2 - 120, FIELD_HEIGHT // 2 - 40, 240, 50)
+        settings_btn = pygame.Rect(WIDTH // 2 - 120, FIELD_HEIGHT // 2 + 20, 240, 50)
+        menu_btn = pygame.Rect(WIDTH // 2 - 120, FIELD_HEIGHT // 2 + 80, 240, 50)
         self.pause_resume_btn = resume_btn
         self.pause_settings_btn = settings_btn
         self.pause_menu_btn = menu_btn
@@ -989,9 +961,7 @@ class Game:
                 effect.draw(self.screen, visible)
             self._draw_fog_of_war(visible)
             self._draw_top_game_interface()
-            all_bot_units = []
-            for team in self.enemy_teams:
-                all_bot_units.extend(team['units'])
+            all_bot_units = self._get_all_enemy_units()
             interface_btn = draw_interface(
                 self.screen,
                 self.current_turn,
@@ -1010,13 +980,6 @@ class Game:
                 self._draw_pause_menu()
             if self.game_over:
                 self._draw_game_over()
-            if self.debug_mode:
-                all_enemy_units = []
-                for team in self.enemy_teams:
-                    all_enemy_units.extend(team['units'])
-                draw_debug_overlay(
-                    self.screen, visible, self.player_units, all_enemy_units
-                )
             if self.shop_open:
                 self._draw_shop_menu()
             self._draw_context_tooltip(visible)

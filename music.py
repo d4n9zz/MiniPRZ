@@ -1,6 +1,7 @@
 import pygame
 import settings
 
+
 def play_menu():
     try:
         if pygame.mixer is None:
@@ -11,6 +12,7 @@ def play_menu():
         pygame.mixer.music.set_volume(settings.MUSIC_VOLUME)
     except Exception:
         pass
+
 
 def play_game():
     try:
@@ -23,12 +25,28 @@ def play_game():
     except Exception:
         pass
 
+
 def fade_music_volume(target_volume):
     try:
         if pygame.mixer is None:
             return
-        base_volume = settings.MUSIC_VOLUME
-        actual_volume = base_volume * target_volume
-        pygame.mixer.music.set_volume(actual_volume)
+        volume = max(0.0, min(1.0, float(target_volume)))
+        pygame.mixer.music.set_volume(settings.MUSIC_VOLUME * volume)
+    except Exception:
+        pass
+
+
+def pause_music():
+    try:
+        if pygame.mixer is not None and pygame.mixer.get_init():
+            pygame.mixer.music.pause()
+    except Exception:
+        pass
+
+
+def resume_music():
+    try:
+        if pygame.mixer is not None and pygame.mixer.get_init():
+            pygame.mixer.music.unpause()
     except Exception:
         pass
