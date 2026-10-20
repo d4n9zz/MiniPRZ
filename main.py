@@ -19,10 +19,10 @@ class ResourceManager:
     def load_fonts(self):
         # Загружаем шрифты разных размеров для меню, интерфейса и эффектов
         self.fonts['normal'] = load_font(28)
-        self.fonts['big'] = load_font(60)
+        self.fonts['big'] = load_font(60, bold=True)
         self.fonts['small'] = load_font(20)
         self.fonts['card'] = load_font(16)
-        self.fonts['damage'] = load_font(32)
+        self.fonts['damage'] = load_font(32, bold=True)
 
         # Сохраняем шрифты в глобальные настройки, чтобы ими пользовались другие модули
         settings.font = self.fonts['normal']
@@ -96,7 +96,12 @@ def main():
         pygame.mixer = None
 
     # Создаём окно игры и главный таймер кадров
-    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    # SCALED: игра рисуется в фиксированном размере (WIDTH x HEIGHT),
+    # а pygame сам масштабирует картинку под любой экран и пересчитывает мышь
+    try:
+        screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.SCALED | pygame.RESIZABLE)
+    except pygame.error:
+        screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption("MiniPRZ")
     clock = pygame.time.Clock()
 

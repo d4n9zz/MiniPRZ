@@ -1,6 +1,8 @@
 import pygame
 import random
 import math
+import settings
+import terrain
 from settings import (
 WIDTH,
 HEIGHT,
@@ -15,8 +17,8 @@ GRID_BORDER,
 FOG_UNEXPLORED,
 FOG_EXPLORED_NO_VIS,
 PLAYER_HIGHLIGHT,
-COLS,
-ROWS,
+UI_BORDER,
+MAP_OUTSIDE_COLOR,
 BOT_GLOW,
 BOT2_GLOW,
 ATTACK_RANGE_COLOR,
@@ -31,39 +33,45 @@ SHOP_ANIM_DURATION,
 UI_ANIM_DURATION,
 )
 from entities import create_units, bot_step, smart_bot_buy, Unit
-from effects import DamageNumber, BattleEffect, DeathEffect
+from effects import DamageNumber, BattleEffect, DeathEffect, BattleLog
 from ui import (
+cards_arrow_rects,
+cards_max_scroll,
+CARD_STEP,
+CARD_W,
+CARDS_VIEW_W,
 draw_interface,
 draw_menu_button,
 draw_pause_menu,
-draw_top_interface,
 )
 from music import play_game, fade_music_volume, pause_music, resume_music
 from menu import settings_menu
 from animation import UIAnimation
+from config import get_field_size
 
 GAME_CONFIG = {
 'num_bots': 3,
 'bot_colors': [BOT_GLOW, BOT2_GLOW, (100, 255, 100), (255, 100, 255), (255, 165, 0)],
 'bot_personalities': ['aggressive', 'defensive', 'balanced', 'aggressive', 'defensive'],
+'map_seed': None,   # число — каждая партия на одной и той же карте; None — случайная карта
 }
 
 def _get_random_spawn_position(is_player, bot_index=None, total_bots=None):
     if is_player:
-        min_y = ROWS - 8
-        max_y = ROWS - 4
+        min_y = settings.ROWS - 8
+        max_y = settings.ROWS - 4
         min_x = 0
-        max_x = COLS - 3
+        max_x = settings.COLS - 3
     else:
         min_y = 1
-        max_y = ROWS // 2
+        max_y = settings.ROWS // 2
         min_x = 0
-        max_x = COLS - 3
+        max_x = settings.COLS - 3
         # Распределяем ботов по ширине карты
         if bot_index is not None and total_bots is not None and total_bots > 0:
-            zone_width = max(4, COLS // total_bots)
+            zone_width = max(4, settings.COLS // total_bots)
             min_x = bot_index * zone_width
-            max_x = min(min_x + zone_width - 3, COLS - 3)
+            max_x = min(min_x + zone_width - 3, settings.COLS - 3)
             if max_x < min_x + 2:
                 max_x = min_x + 2
             min_x = max(0, min_x)
@@ -94,7 +102,7 @@ def _get_attackable_tiles(unit, enemy_units):
             if dx == 0 and dy == 0:
                 continue
             nx, ny = x + dx, y + dy
-            if 0 <= nx < COLS and 0 <= ny < ROWS:
+            if 0 <= nx < settings.COLS and 0 <= ny < settings.ROWS:
                 for enemy in enemy_units:
                     if enemy.pos == [nx, ny]:
                         attackable.append((nx, ny))
@@ -117,7 +125,9 @@ class Game:
         "bot_city_img", "player_gold",
         "shop_open", "shop_city_pos", "shop_buttons", "shop_close_btn",
         "shop_open_time", "context_tooltip_unit",
-        "pause_anim",
+        "pause_anim", "map_rect",
+        "cards_scroll", "cards_scroll_cur", "cards_last_selected",
+        "battle_log", "terrain_surface", "map_seed", "visible_now",
     ]
 
     def __init__(self, screen, clock, num_bots=None):
@@ -126,9 +136,31 @@ class Game:
         if num_bots is not None:
             GAME_CONFIG['num_bots'] = num_bots
         play_game()
-        self._create_static_surfaces()
+        self._apply_selected_map()
         self._load_city_images()
         self._reset_game()
+
+    def _team_label(self, unit):
+        """Подпись стороны юнита для журнала и её цвет."""
+        if unit.is_player:
+            return "You", PLAYER_HIGHLIGHT
+        for i, team in enumerate(self.enemy_teams):
+            if unit in team['units']:
+                return f"Bot {i + 1}", team['color']
+        return "Bot", BOT_GLOW
+
+    def _log_attack(self, attacker, defender, damage, killed):
+        # Бой в тумане игрок не видит — в журнал он тоже не попадает
+        if not (attacker.is_player or defender.is_player
+                or tuple(attacker.pos) in self.visible_now
+                or tuple(defender.pos) in self.visible_now):
+            return
+        a_label, a_color = self._team_label(attacker)
+        d_label, d_color = self._team_label(defender)
+        self.battle_log.add(
+            f"{a_label} {attacker.name} hits {d_label} {defender.name} for {damage}", a_color)
+        if killed:
+            self.battle_log.add(f"{d_label} {defender.name} destroyed!", (255, 110, 110))
 
     def _get_all_enemy_units(self):
         all_enemies = []
@@ -157,11 +189,28 @@ class Game:
             return True
         return False
 
+    def _apply_selected_map(self):
+        # Берём размер карты из настроек и пересоздаём всё, что от него зависит
+        settings.apply_field_preset(get_field_size())
+        self._create_static_surfaces()
+
     def _create_static_surfaces(self):
-        self.grid_surface = pygame.Surface((WIDTH, FIELD_HEIGHT), pygame.SRCALPHA)
+        # Окно всегда одного размера, карта стоит по центру области поля
+        self.map_rect = pygame.Rect(
+            settings.MAP_OFFSET_X, settings.MAP_OFFSET_Y,
+            settings.MAP_WIDTH, settings.MAP_HEIGHT,
+        )
+        self.grid_surface = pygame.Surface(self.map_rect.size, pygame.SRCALPHA)
         self._draw_grid_static()
         self.bg_surface = pygame.Surface((WIDTH, FIELD_HEIGHT))
         self._draw_background_static()
+
+    def _mouse_to_grid(self, mouse_x, mouse_y):
+        # Позиция мыши в окне -> клетка карты (с учётом смещения карты)
+        return [
+            (mouse_x - self.map_rect.x) // TILE_SIZE,
+            (mouse_y - self.map_rect.y) // TILE_SIZE,
+        ]
 
     def _load_city_images(self):
         self.player_city_img = None
@@ -180,21 +229,42 @@ class Game:
             pass
 
     def _draw_grid_static(self):
-        for y in range(ROWS):
-            for x in range(COLS):
+        for y in range(settings.ROWS):
+            for x in range(settings.COLS):
                 rect = pygame.Rect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE)
                 pygame.draw.rect(self.grid_surface, GRID_COLOR, rect)
                 pygame.draw.rect(self.grid_surface, GRID_BORDER, rect, 1)
 
     def _draw_background_static(self):
-        for y in range(FIELD_HEIGHT):
-            ratio = y / FIELD_HEIGHT
+        # Вокруг карты тёмная рамка, внутри карты градиент травы
+        self.bg_surface.fill(MAP_OUTSIDE_COLOR)
+        rect = self.map_rect
+        for y in range(rect.height):
+            ratio = y / rect.height
             r = int(BG_TOP[0] * (1 - ratio) + BG_BOTTOM[0] * ratio)
             g = int(BG_TOP[1] * (1 - ratio) + BG_BOTTOM[1] * ratio)
             b = int(BG_TOP[2] * (1 - ratio) + BG_BOTTOM[2] * ratio)
-            pygame.draw.line(self.bg_surface, (r, g, b), (0, y), (WIDTH, y))
+            pygame.draw.line(
+                self.bg_surface, (r, g, b),
+                (rect.left, rect.top + y), (rect.right - 1, rect.top + y),
+            )
+        pygame.draw.rect(self.bg_surface, UI_BORDER, rect.inflate(8, 8), 4)
 
     def _reset_game(self):
+        # Ряд карточек юнитов возвращаем в начало
+        self.cards_scroll = 0
+        self.cards_scroll_cur = 0.0
+        self.cards_last_selected = None
+        # Если в настройках выбрали другую карту, она применяется с новой партии
+        selected_map = get_field_size()
+        if selected_map in settings.FIELD_PRESETS and selected_map != settings.FIELD_PRESET:
+            self._apply_selected_map()
+        # Сид определяет всю стартовую расстановку: города, местность и первых юнитов
+        seed = GAME_CONFIG.get('map_seed')
+        if seed is None:
+            seed = random.randint(0, 999999)
+        self.map_seed = seed
+        random.seed(seed)
         min_distance = 5
         num_bots = GAME_CONFIG['num_bots']
         self.player_spawn = _get_random_spawn_position(is_player=True)
@@ -227,18 +297,23 @@ class Game:
                     total_bots=num_bots
                 )
                 bot_spawns.append(new_spawn)
+        # Местность строим, когда все города уже стоят: она не должна их запирать
+        terrain.generate([self.player_spawn] + bot_spawns, seed)
+        self.terrain_surface = terrain.build_surface(self.map_rect.size)
+        for i, spawn in enumerate(bot_spawns):
             color = GAME_CONFIG['bot_colors'][i % len(GAME_CONFIG['bot_colors'])]
             personality = GAME_CONFIG['bot_personalities'][i % len(GAME_CONFIG['bot_personalities'])]
             self.enemy_teams.append({
-                'units': create_units(2, self._get_all_enemy_units(), is_player=False, spawn_zone=new_spawn),
+                'units': create_units(2, self._get_all_enemy_units(), is_player=False, spawn_zone=spawn),
                 'color': color,
                 'personality': personality,
-                'spawn': new_spawn,
+                'spawn': spawn,
                 'gold': 15,
                 'action_index': 0,
                 'wait_until': 0,
             })
         self.player_units = create_units(2, [], is_player=True, spawn_zone=self.player_spawn)
+        random.seed()   # дальше партия идёт случайно, как обычно
         self.selected_unit = None
         self.current_turn = "player"
         self.game_over = False
@@ -271,6 +346,9 @@ class Game:
         self.shop_close_btn = None
         self.shop_open_time = 0
         self.context_tooltip_unit = None
+        self.visible_now = set()
+        self.battle_log = BattleLog()
+        self.battle_log.add(f"Map seed: {self.map_seed}", (150, 160, 185))
         # === АНИМАЦИЯ МЕНЮ ПАУЗЫ ===
         self.pause_anim = UIAnimation(duration=UI_ANIM_DURATION)
 
@@ -320,14 +398,14 @@ class Game:
                 for dy in range(-VISIBILITY_RADIUS, VISIBILITY_RADIUS + 1):
                     if dx * dx + dy * dy <= VISIBILITY_RADIUS * VISIBILITY_RADIUS:
                         nx, ny = x + dx, y + dy
-                        if 0 <= nx < COLS and 0 <= ny < ROWS:
+                        if 0 <= nx < settings.COLS and 0 <= ny < settings.ROWS:
                             visible.add((nx, ny))
         player_city_x = self.player_spawn[0]
         player_city_y = self.player_spawn[1]
         for dx in range(3):
             for dy in range(3):
                 city_tile = (player_city_x + dx, player_city_y + dy)
-                if 0 <= city_tile[0] < COLS and 0 <= city_tile[1] < ROWS:
+                if 0 <= city_tile[0] < settings.COLS and 0 <= city_tile[1] < settings.ROWS:
                     visible.add(city_tile)
                     self.explored_tiles.add(city_tile)
         return visible
@@ -388,18 +466,31 @@ class Game:
             1,
         )
         self.screen.blit(ring_surf, (cx - ring_center, cy - ring_center))
-        from settings import small_font
-        if small_font:
-            num_symbols = len(PLAYER_AURA_SYMBOLS)
-            for i, symbol in enumerate(PLAYER_AURA_SYMBOLS):
-                angle = base_angle + (i * 2 * math.pi / num_symbols)
-                sx = cx + int(PLAYER_AURA_RADIUS * math.cos(angle))
-                sy = cy + int(PLAYER_AURA_RADIUS * math.sin(angle))
-                symbol_alpha = int(aura_alpha * (0.6 + 0.4 * abs(math.sin(t * 0.003 + i))))
-                sym_surf = small_font.render(symbol, True, PLAYER_AURA_COLOR[:3])
-                sym_surf.set_alpha(symbol_alpha)
-                sym_rect = sym_surf.get_rect(center=(sx, sy))
-                self.screen.blit(sym_surf, sym_rect)
+        num_symbols = len(PLAYER_AURA_SYMBOLS)
+        for i, symbol in enumerate(PLAYER_AURA_SYMBOLS):
+            angle = base_angle + (i * 2 * math.pi / num_symbols)
+            sx = cx + int(PLAYER_AURA_RADIUS * math.cos(angle))
+            sy = cy + int(PLAYER_AURA_RADIUS * math.sin(angle))
+            symbol_alpha = int(aura_alpha * (0.6 + 0.4 * abs(math.sin(t * 0.003 + i))))
+            self._draw_aura_star(sx, sy, symbol.strip(), PLAYER_AURA_COLOR[:3], symbol_alpha)
+
+    def _draw_aura_star(self, x, y, symbol, color, alpha, radius=9):
+        # Звёздочка аура рисуется полигоном (шрифт Nunito не содержит символов ✦ ✧ ⚝).
+        # ✦ — закрашенная 4-лучевая, ✧ — контурная 4-лучевая, ⚝ — контурная 5-лучевая
+        rays = 5 if symbol == '⚝' else 4
+        filled = symbol == '✦'
+        inner = radius * (0.45 if rays == 5 else 0.35)
+        size = radius * 2 + 4
+        surf = pygame.Surface((size, size), pygame.SRCALPHA)
+        c = size / 2
+        points = []
+        for k in range(rays * 2):
+            r = radius if k % 2 == 0 else inner
+            a = -math.pi / 2 + k * math.pi / rays
+            points.append((c + r * math.cos(a), c + r * math.sin(a)))
+        pygame.draw.polygon(surf, (*color, 255), points, 0 if filled else 1)
+        surf.set_alpha(alpha)
+        self.screen.blit(surf, (x - c, y - c))
 
     def _draw_spawn_zones(self, visible):
         player_city_pos = [self.player_spawn[0] + 1, self.player_spawn[1] + 1]
@@ -424,11 +515,6 @@ class Game:
                 )
                 pygame.draw.rect(self.screen, team['color'], zone_rect, 3)
                 self._draw_city(city_pos, is_player=False, team_color=team['color'])
-
-    def _draw_top_game_interface(self):
-        stars = self.player_gold
-        stars_change = 5
-        draw_top_interface(self.screen, stars, stars_change)
 
     def _draw_shop_menu(self):
         from settings import font, small_font
@@ -507,8 +593,8 @@ class Game:
             if self.selected_unit is not None:
                 return
             city_pos = [self.player_spawn[0] + 1, self.player_spawn[1] + 1]
-            city_x = city_pos[0] * TILE_SIZE
-            city_y = city_pos[1] * TILE_SIZE
+            city_x = city_pos[0] * TILE_SIZE + self.map_rect.x
+            city_y = city_pos[1] * TILE_SIZE + self.map_rect.y
             city_rect = pygame.Rect(city_x, city_y, TILE_SIZE, TILE_SIZE)
             if city_rect.collidepoint(mouse_x, mouse_y):
                 self.shop_open_time = pygame.time.get_ticks()
@@ -524,6 +610,7 @@ class Game:
                 if self.player_gold >= cost:
                     if self._spawn_player_unit(utype):
                         self.player_gold -= cost
+                        self.battle_log.add(f"You recruited {UNIT_TYPES[utype]['name']} (-{cost})", (255, 215, 0))
                 return
 
     def _buy_unit_by_index(self, index):
@@ -536,6 +623,7 @@ class Game:
         if self.player_gold >= cost:
             if self._spawn_player_unit(utype):
                 self.player_gold -= cost
+                self.battle_log.add(f"You recruited {UNIT_TYPES[utype]['name']} (-{cost})", (255, 215, 0))
 
     def _draw_attack_indicators(self, visible):
         if self.current_turn != "player" or not self.selected_unit:
@@ -556,8 +644,8 @@ class Game:
             self.screen.blit(highlight_surf, rect.topleft)
 
     def _draw_fog_of_war(self, visible):
-        for y in range(ROWS):
-            for x in range(COLS):
+        for y in range(settings.ROWS):
+            for x in range(settings.COLS):
                 tile_pos = (x, y)
                 tile_rect = pygame.Rect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE)
                 if tile_pos not in self.explored_tiles:
@@ -676,8 +764,8 @@ class Game:
         line_height = small_font.get_height() + 4
         tooltip_width = 180
         tooltip_height = len(info_lines) * line_height + padding * 2
-        unit_screen_x = unit.pos[0] * TILE_SIZE + TILE_SIZE // 2
-        unit_screen_y = unit.pos[1] * TILE_SIZE + TILE_SIZE // 2
+        unit_screen_x = unit.pos[0] * TILE_SIZE + TILE_SIZE // 2 + self.map_rect.x
+        unit_screen_y = unit.pos[1] * TILE_SIZE + TILE_SIZE // 2 + self.map_rect.y
         tooltip_x = unit_screen_x + TILE_SIZE // 2 + 10
         tooltip_y = unit_screen_y - tooltip_height // 2
         if tooltip_x + tooltip_width > WIDTH:
@@ -699,6 +787,31 @@ class Game:
             text_surf = small_font.render(line, True, text_color)
             self.screen.blit(text_surf, (tooltip_x + padding, tooltip_y + padding + i * line_height))
 
+    def _scroll_cards(self, direction):
+        # direction: -1 — влево, +1 — вправо (на одну карточку)
+        max_scroll = cards_max_scroll(len(self.player_units))
+        self.cards_scroll = max(0, min(max_scroll, self.cards_scroll + direction * CARD_STEP))
+
+    def _update_cards_scroll(self):
+        max_scroll = cards_max_scroll(len(self.player_units))
+        # Если выбрали юнита (клавишей или кликом) — показываем его карточку
+        if self.selected_unit is not self.cards_last_selected:
+            self.cards_last_selected = self.selected_unit
+            if self.selected_unit in self.player_units:
+                left = self.player_units.index(self.selected_unit) * CARD_STEP
+                right = left + CARD_W
+                if left < self.cards_scroll:
+                    self.cards_scroll = left
+                elif right > self.cards_scroll + CARDS_VIEW_W:
+                    self.cards_scroll = right - CARDS_VIEW_W
+        self.cards_scroll = max(0, min(max_scroll, self.cards_scroll))
+        # Плавное движение к целевому смещению
+        diff = self.cards_scroll - self.cards_scroll_cur
+        if abs(diff) < 0.5:
+            self.cards_scroll_cur = float(self.cards_scroll)
+        else:
+            self.cards_scroll_cur += diff * 0.25
+
     def _handle_input(self, interface_btn, menu_btn_rect):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -710,6 +823,8 @@ class Game:
                         self.shop_city_pos = None
                     else:
                         self._set_pause_state(not self.paused)
+                if event.key == pygame.K_l and not self.paused:
+                    self.battle_log.toggle()
                 if event.key == pygame.K_SPACE:
                     if self.game_over:
                         self._reset_game()
@@ -728,17 +843,19 @@ class Game:
                         if event.key == k and len(unit_types) > i:
                             self._buy_unit_by_index(i)
                             break
-                if self.current_turn == "player" and not self.game_over and not self.paused and not self.shop_open:
-                    keys = (pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4)
-                    for i, k in enumerate(keys):
-                        if event.key == k and len(self.player_units) > i:
-                            self.selected_unit = self.player_units[i]
-                            break
+            if event.type == pygame.MOUSEWHEEL and not self.paused and not self.shop_open:
+                # Колесо над нижней панелью прокручивает ряд карточек
+                if pygame.mouse.get_pos()[1] >= FIELD_HEIGHT:
+                    delta = -event.y if event.y else event.x
+                    if delta:
+                        self._scroll_cards(1 if delta > 0 else -1)
             if event.type == pygame.MOUSEBUTTONDOWN and not self.game_over:
+                if event.button in (4, 5):
+                    continue  # старые события колеса — не считаем кликами
                 mouse_x, mouse_y = pygame.mouse.get_pos()
                 if event.button == 3:
                     from utils import get_unit_at
-                    grid_pos = [mouse_x // TILE_SIZE, mouse_y // TILE_SIZE]
+                    grid_pos = self._mouse_to_grid(mouse_x, mouse_y)
                     all_units = self._get_all_units()
                     clicked_unit = get_unit_at(grid_pos, all_units)
                     if clicked_unit:
@@ -760,12 +877,21 @@ class Game:
                             and self.pause_settings_btn.collidepoint(mouse_x, mouse_y)
                     ):
                         self._set_pause_state(False)
-                        settings_menu(self.screen, self.clock)
+                        settings_menu(self.screen, self.clock, in_game=True)
                         self._set_pause_state(True)
                     elif self.pause_menu_btn and self.pause_menu_btn.collidepoint(mouse_x, mouse_y):
                         self.return_to_menu = True
                         return False
                     continue
+                if event.button == 1 and not self.shop_open:
+                    left_arrow, right_arrow = cards_arrow_rects()
+                    if cards_max_scroll(len(self.player_units)) > 0:
+                        if left_arrow.collidepoint(mouse_x, mouse_y):
+                            self._scroll_cards(-1)
+                            continue
+                        if right_arrow.collidepoint(mouse_x, mouse_y):
+                            self._scroll_cards(1)
+                            continue
                 if interface_btn.collidepoint(mouse_x,
                                               mouse_y) and self.current_turn == "player" and not self.shop_open:
                     self._end_player_turn()
@@ -782,7 +908,9 @@ class Game:
 
     def _handle_field_click(self, mouse_x, mouse_y):
         from utils import get_unit_at
-        grid_pos = [mouse_x // TILE_SIZE, mouse_y // TILE_SIZE]
+        grid_pos = self._mouse_to_grid(mouse_x, mouse_y)
+        if not (0 <= grid_pos[0] < settings.COLS and 0 <= grid_pos[1] < settings.ROWS):
+            return  # клик мимо карты (рамка или нижняя панель)
         clicked_unit = get_unit_at(grid_pos, self.player_units)
         if clicked_unit:
             if self.selected_unit == clicked_unit:
@@ -802,6 +930,8 @@ class Game:
                 enemy_unit = get_unit_at(grid_pos, all_enemies)
                 if enemy_unit:
                     self._perform_attack(self.selected_unit, enemy_unit)
+                elif terrain.is_blocked(grid_pos):
+                    return  # вода и горы непроходимы
                 elif not get_unit_at(grid_pos, self.player_units) and not get_unit_at(
                         grid_pos, all_enemies
                 ):
@@ -817,6 +947,7 @@ class Game:
         self.battle_effects.append(BattleEffect(defender.pos))
         if not defender.is_alive():
             self.death_effects.append(DeathEffect(defender.pos))
+        self._log_attack(attacker, defender, attack_damage, not defender.is_alive())
         attacker.has_moved = True
         self.selected_unit = None
 
@@ -830,6 +961,7 @@ class Game:
             self.player_gold += 5
             return
         self.current_turn = "bot"
+        self.battle_log.add("- Bots' turn -", (150, 160, 185))
         self.current_bot_index = 0
         self.bot_wait_until = pygame.time.get_ticks() + random.randint(500, 1000)
         # ИСПРАВЛЕНИЕ: сбрасываем action_index и устанавливаем wait_until для каждой команды
@@ -888,6 +1020,7 @@ class Game:
                         damage_callback=lambda pos, dmg: self.damage_numbers.append(DamageNumber(pos, dmg)),
                         effect_callback=lambda pos: self.battle_effects.append(BattleEffect(pos)),
                         death_callback=lambda pos: self.death_effects.append(DeathEffect(pos)),
+                        attack_callback=self._log_attack,
                     )
                     current_team['action_index'] += 1
                     if current_team['action_index'] < len(current_team['units']):
@@ -907,6 +1040,7 @@ class Game:
                                 'wait_until'] = pygame.time.get_ticks() + random.randint(500, 1000)
                         else:
                             self.current_turn = "player"
+                            self.battle_log.add("- Your turn -", (150, 160, 185))
                             self.turn_timer_start = pygame.time.get_ticks()
                             self.total_paused_time = 0
                             for u in self.player_units:
@@ -948,20 +1082,30 @@ class Game:
         while running:
             visible = self._get_visible_tiles()
             self.explored_tiles.update(visible)
-            self.screen.blit(self.bg_surface, (0, 0))
-            self.screen.blit(self.grid_surface, (0, 0))
-            self._draw_spawn_zones(visible)
-            self._draw_units(visible)
-            self._draw_attack_indicators(visible)
-            for dmg in self.damage_numbers:
-                dmg.draw(self.screen, visible)
-            for effect in self.battle_effects:
-                effect.draw(self.screen, visible)
-            for effect in self.death_effects:
-                effect.draw(self.screen, visible)
-            self._draw_fog_of_war(visible)
-            self._draw_top_game_interface()
+            self.visible_now = visible
+            real_screen = self.screen
+            real_screen.blit(self.bg_surface, (0, 0))
+            real_screen.blit(self.grid_surface, self.map_rect.topleft)
+            real_screen.blit(self.terrain_surface, self.map_rect.topleft)
+            # Карта рисуется на подповерхности окна: внутри неё координаты
+            # начинаются с (0, 0), поэтому код отрисовки юнитов, тумана и
+            # эффектов работает без смещений. После карты экран возвращаем.
+            self.screen = real_screen.subsurface(self.map_rect)
+            try:
+                self._draw_spawn_zones(visible)
+                self._draw_units(visible)
+                self._draw_attack_indicators(visible)
+                for dmg in self.damage_numbers:
+                    dmg.draw(self.screen, visible)
+                for effect in self.battle_effects:
+                    effect.draw(self.screen, visible)
+                for effect in self.death_effects:
+                    effect.draw(self.screen, visible)
+                self._draw_fog_of_war(visible)
+            finally:
+                self.screen = real_screen
             all_bot_units = self._get_all_enemy_units()
+            self._update_cards_scroll()
             interface_btn = draw_interface(
                 self.screen,
                 self.current_turn,
@@ -974,8 +1118,12 @@ class Game:
                 self.paused,
                 self.pause_start_time,
                 self.total_paused_time,
+                self.cards_scroll_cur,
+                stars=self.player_gold,
+                stars_change=5,
             )
             menu_btn_rect = draw_menu_button(self.screen)
+            self.battle_log.draw(self.screen, 10, 70, settings.card_font or settings.small_font)
             if self.paused:
                 self._draw_pause_menu()
             if self.game_over:

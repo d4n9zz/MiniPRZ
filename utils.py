@@ -1,10 +1,20 @@
 import pygame
 import os
 import random
-from settings import FONT_FALLBACKS, TILE_SIZE, COLS, ROWS
+import settings
+import terrain
+from settings import FONT_FALLBACKS, TILE_SIZE
 
 
-def load_font(size):
+def load_font(size, bold=False):
+    # Сначала пробуем шрифт из папки resources/fonts — он одинаковый на любом ПК
+    path = settings.FONT_BOLD if bold else settings.FONT_REGULAR
+    if os.path.exists(path):
+        try:
+            return pygame.font.Font(path, size)
+        except (pygame.error, OSError):
+            pass
+    # Не нашли файл — запасной вариант: системные шрифты
     for name in FONT_FALLBACKS:
         try:
             font_test = pygame.font.SysFont(name, size)
@@ -31,7 +41,7 @@ def load_unit_image(filepath):
 
 def get_empty_pos(existing_units):
     while True:
-        pos = [random.randint(0, COLS - 1), random.randint(0, ROWS - 1)]
+        pos = [random.randint(0, settings.COLS - 1), random.randint(0, settings.ROWS - 1)]
         occupied = False
         for u in existing_units:
             if hasattr(u, 'pos'):
@@ -42,7 +52,7 @@ def get_empty_pos(existing_units):
                 if u["pos"] == pos:
                     occupied = True
                     break
-        if not occupied:
+        if not occupied and not terrain.is_blocked(pos):
             return pos
 
 

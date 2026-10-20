@@ -4,7 +4,8 @@ import webbrowser
 import pygame
 import settings
 from background import BackgroundManager
-from config import set_music_volume, set_background, get_background, set_snow_enabled, get_snow_enabled
+from config import (set_music_volume, set_background, get_background, set_snow_enabled, get_snow_enabled,
+                    get_field_size, set_field_size)
 from music import play_menu
 from settings import (
 WIDTH, HEIGHT, MENU_BG_TOP, MENU_BG_BOTTOM,
@@ -17,6 +18,40 @@ from animation import UIAnimation, staggered_progress
 
 # Менеджер фона для главного меню и настроек
 bg_manager = BackgroundManager()
+
+# Общий снег для главного меню и настроек: список один, поэтому при переходе
+# между экранами снежинки продолжают падать с того же места
+SNOW_COUNT = 100
+snowflakes = []
+
+
+def _init_snow():
+    # Создаём снежинки один раз за запуск игры
+    if snowflakes:
+        return
+    for _ in range(SNOW_COUNT):
+        snowflakes.append({
+            'x': random.randint(0, WIDTH),
+            'y': random.randint(0, HEIGHT),
+            'size': random.randint(2, 5),
+            'speed': random.uniform(0.5, 2.0),
+            'wind': random.uniform(-0.3, 0.3),
+        })
+
+
+def _draw_snow(screen):
+    # Рисует снежинки и сдвигает их на один кадр
+    for flake in snowflakes:
+        pygame.draw.circle(screen, (255, 255, 255), (int(flake['x']), int(flake['y'])), flake['size'])
+        flake['y'] += flake['speed']
+        flake['x'] += flake['wind']
+        if flake['y'] > HEIGHT:
+            flake['y'] = -5
+            flake['x'] = random.randint(0, WIDTH)
+        elif flake['x'] > WIDTH:
+            flake['x'] = 0
+        elif flake['x'] < 0:
+            flake['x'] = WIDTH
 
 # Рисует кнопку с плавным эффектом наведения и прозрачностью
 # rect - прямоугольник кнопки, base_color - обычный цвет, hover_color - при наведении
@@ -44,11 +79,12 @@ def _draw_button(screen, rect, base_color, hover_color, text, font, p, mouse_pos
         screen.blit(t_surf, t_surf.get_rect(center=rect.center))
 
 
-# Окно настроек: громкость, фон, снег и выход назад
+# Окно настроек: громкость, фон, размер карты, снег и выход назад
 # screen - окно игры, clock - таймер кадров
+# in_game - окно открыто из паузы (новая карта применится со следующей партии)
 
-def settings_menu(screen, clock):
-    from settings import font
+def settings_menu(screen, clock, in_game=False):
+    from settings import font, small_font
 
     # Подгружаем текущий фон меню, чтобы не было пустого экрана в паузе
     bg_manager.load_background(settings.CURRENT_BACKGROUND, CUSTOM_BACKGROUNDS)
@@ -57,17 +93,13 @@ def settings_menu(screen, clock):
     saved_bg = get_background()
     bg_index = BACKGROUND_KEYS.index(saved_bg) if saved_bg in BACKGROUND_KEYS else 0
     snow_enabled = get_snow_enabled()
+    map_keys = settings.FIELD_PRESET_KEYS
+    saved_map = get_field_size()
+    if saved_map not in map_keys:
+        saved_map = settings.DEFAULT_FIELD_PRESET
+    map_index = map_keys.index(saved_map)
 
-    # Список снежинок для эффекта в окне настроек
-    snowflakes = []
-    for _ in range(80):
-        snowflakes.append({
-            'x': random.randint(0, WIDTH),
-            'y': random.randint(0, HEIGHT),
-            'size': random.randint(2, 5),
-            'speed': random.uniform(0.5, 2.0),
-            'wind': random.uniform(-0.3, 0.3),
-        })
+    _init_snow()
 
     anim = UIAnimation(duration=UI_ANIM_DURATION)
 
@@ -84,17 +116,7 @@ def settings_menu(screen, clock):
 
         # Анимация снега, если он включён
         if snow_enabled:
-            for flake in snowflakes:
-                pygame.draw.circle(screen, (255, 255, 255), (int(flake['x']), int(flake['y'])), flake['size'])
-                flake['y'] += flake['speed']
-                flake['x'] += flake['wind']
-                if flake['y'] > HEIGHT:
-                    flake['y'] = -5
-                    flake['x'] = random.randint(0, WIDTH)
-                elif flake['x'] > WIDTH:
-                    flake['x'] = 0
-                elif flake['x'] < 0:
-                    flake['x'] = WIDTH
+            _draw_snow(screen)
 
         # Затемнение фона и плавное появление панели настроек
         eased = anim.get_progress()
@@ -104,12 +126,12 @@ def settings_menu(screen, clock):
         screen.blit(overlay, (0, 0))
 
         # Позиция выезжающей панели настроек
-        target_y = HEIGHT // 2 - 150
+        target_y = HEIGHT // 2 - 200
         start_y = target_y + UI_SLIDE_DISTANCE
         panel_y = int(start_y + (target_y - start_y) * eased)
-        panel_rect = pygame.Rect(WIDTH // 2 - 200, panel_y, 400, 380)
+        panel_rect = pygame.Rect(WIDTH // 2 - 200, panel_y, 400, 420)
 
-        panel_surf = pygame.Surface((400, 380), pygame.SRCALPHA)
+        panel_surf = pygame.Surface((400, 420), pygame.SRCALPHA)
         panel_surf.fill((*UI_BG, int(255 * eased)))
         screen.blit(panel_surf, panel_rect.topleft)
         pygame.draw.rect(screen, UI_BORDER, panel_rect, 2, border_radius=12)
@@ -129,14 +151,28 @@ def settings_menu(screen, clock):
         bg_text.set_alpha(int(255 * eased))
         screen.blit(bg_text, bg_text.get_rect(center=(WIDTH // 2, panel_y + 150)))
 
+        # Выбор размера карты и подсказка под ним
+        map_key = map_keys[map_index]
+        map_cols, map_rows = settings.FIELD_PRESETS[map_key]
+        map_text = font.render(f"MAP: {map_key.upper()}", True, UI_TEXT)
+        map_text.set_alpha(int(255 * eased))
+        screen.blit(map_text, map_text.get_rect(center=(WIDTH // 2, panel_y + 205)))
+        if small_font:
+            hint = f"{map_cols}x{map_rows} cells" + (" - applies to next game" if in_game else "")
+            hint_surf = small_font.render(hint, True, (150, 160, 180))
+            hint_surf.set_alpha(int(255 * eased))
+            screen.blit(hint_surf, hint_surf.get_rect(center=(WIDTH // 2, panel_y + 245)))
+
         # Кнопки управления громкостью, фоном и закрытием окна
         btn_w, btn_h = 55, 55
         btn_minus = pygame.Rect(WIDTH // 2 - 150, panel_y + 70, btn_w, btn_h)
         btn_plus = pygame.Rect(WIDTH // 2 + 90, panel_y + 70, btn_w, btn_h)
         btn_bg_left = pygame.Rect(WIDTH // 2 - 150, panel_y + 125, btn_w, btn_h)
         btn_bg_right = pygame.Rect(WIDTH // 2 + 90, panel_y + 125, btn_w, btn_h)
-        btn_snow = pygame.Rect(WIDTH // 2 - 80, panel_y + 210, 160, 50)
-        btn_back = pygame.Rect(WIDTH // 2 - 100, panel_y + 280, 200, 50)
+        btn_map_left = pygame.Rect(WIDTH // 2 - 150, panel_y + 180, btn_w, btn_h)
+        btn_map_right = pygame.Rect(WIDTH // 2 + 90, panel_y + 180, btn_w, btn_h)
+        btn_snow = pygame.Rect(WIDTH // 2 - 80, panel_y + 265, 160, 50)
+        btn_back = pygame.Rect(WIDTH // 2 - 100, panel_y + 335, 200, 50)
 
         mouse_x, mouse_y = pygame.mouse.get_pos()
 
@@ -144,10 +180,12 @@ def settings_menu(screen, clock):
         btn_list = [
             (btn_minus, "-", False, 0),
             (btn_plus, "+", False, 1),
-            (btn_bg_left, "◀", False, 2),
-            (btn_bg_right, "▶", False, 3),
-            (btn_snow, f"{'❄ ON' if snow_enabled else '☀ OFF'}", False, 4),
-            (btn_back, "BACK", True, 5),
+            (btn_bg_left, "<", False, 2),
+            (btn_bg_right, ">", False, 3),
+            (btn_map_left, "<", False, 4),
+            (btn_map_right, ">", False, 5),
+            (btn_snow, 'ON' if snow_enabled else 'OFF', False, 6),
+            (btn_back, "BACK", True, 7),
         ]
 
         # Рисуем все кнопки с эффектом плавного появления по очереди
@@ -189,6 +227,12 @@ def settings_menu(screen, clock):
                     set_background(new_bg_key)
                     settings.CURRENT_BACKGROUND = new_bg_key
                     bg_manager.load_background(new_bg_key, CUSTOM_BACKGROUNDS)
+                elif btn_map_left.collidepoint(mouse_x, mouse_y):
+                    map_index = (map_index - 1) % len(map_keys)
+                    set_field_size(map_keys[map_index])
+                elif btn_map_right.collidepoint(mouse_x, mouse_y):
+                    map_index = (map_index + 1) % len(map_keys)
+                    set_field_size(map_keys[map_index])
                 elif btn_snow.collidepoint(mouse_x, mouse_y):
                     snow_enabled = not snow_enabled
                     set_snow_enabled(snow_enabled)
@@ -206,15 +250,7 @@ def main_menu(screen, clock):
     running_menu = True
     menu_state = "main"
     online_msg_alpha = 0
-    snowflakes = []
-    for _ in range(100):
-        snowflakes.append({
-            'x': random.randint(0, WIDTH),
-            'y': random.randint(0, HEIGHT),
-            'size': random.randint(2, 5),
-            'speed': random.uniform(0.5, 2.0),
-            'wind': random.uniform(-0.3, 0.3)
-        })
+    _init_snow()
     github_rect = None
     if settings.github_icon_img:
         github_rect = pygame.Rect(WIDTH - 74, 10, 64, 64)
@@ -225,18 +261,7 @@ def main_menu(screen, clock):
     while running_menu:
         bg_manager.draw(screen, WIDTH, HEIGHT)
         if settings.SNOW_ENABLED:
-            for flake in snowflakes:
-                pygame.draw.circle(screen, (255, 255, 255),
-                                   (int(flake['x']), int(flake['y'])), flake['size'])
-                flake['y'] += flake['speed']
-                flake['x'] += flake['wind']
-                if flake['y'] > HEIGHT:
-                    flake['y'] = -5
-                    flake['x'] = random.randint(0, WIDTH)
-                elif flake['x'] > WIDTH:
-                    flake['x'] = 0
-                elif flake['x'] < 0:
-                    flake['x'] = WIDTH
+            _draw_snow(screen)
 
         overlay = pygame.Surface((WIDTH, HEIGHT))
         overlay.set_alpha(BG_OVERLAY_ALPHA)
@@ -278,13 +303,13 @@ def main_menu(screen, clock):
         if menu_state == "main":
             button_width, button_height = 260, 60
             buttons_config = [
-                (WIDTH // 2 - button_width // 2, HEIGHT // 2 - button_height * 1.5, "▶ PLAY",
+                (WIDTH // 2 - button_width // 2, HEIGHT // 2 - button_height * 1.5, "PLAY",
                  MENU_BTN_BLUE, MENU_BTN_BLUE_HOVER, "play"),
-                (WIDTH // 2 - button_width // 2, HEIGHT // 2 - button_height * 0.5, "🌐 ONLINE",
+                (WIDTH // 2 - button_width // 2, HEIGHT // 2 - button_height * 0.5, "ONLINE",
                  MENU_BTN_BLUE, MENU_BTN_BLUE_HOVER, "online"),
-                (WIDTH // 2 - button_width // 2, HEIGHT // 2 + button_height * 0.5, "⚙ SETTINGS",
+                (WIDTH // 2 - button_width // 2, HEIGHT // 2 + button_height * 0.5, "SETTINGS",
                  MENU_BTN_BLUE, MENU_BTN_BLUE_HOVER, "settings"),
-                (WIDTH // 2 - button_width // 2, HEIGHT // 2 + button_height * 1.5, "✕ EXIT",
+                (WIDTH // 2 - button_width // 2, HEIGHT // 2 + button_height * 1.5, "EXIT",
                  MENU_BTN_RED, MENU_BTN_RED_HOVER, "exit"),
             ]
             for idx, (x, y, text, color, hover_color, action) in enumerate(buttons_config):
@@ -308,7 +333,7 @@ def main_menu(screen, clock):
                 (btn_rogue, "rogue"),
                 (btn_back, "back")
             ]
-            btn_texts = ["⚔️ Bot", "❓ ???", "◀ BACK"]
+            btn_texts = ["Bot", "???", "BACK"]
             btn_colors = [MENU_BTN_BLUE, MENU_BTN_BLUE, MENU_BTN_RED]
             btn_hovers = [MENU_BTN_BLUE_HOVER, MENU_BTN_BLUE_HOVER, MENU_BTN_RED_HOVER]
 

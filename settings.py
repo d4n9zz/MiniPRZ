@@ -1,13 +1,52 @@
 import pygame
 
-WIDTH = 1920                        # ширина окна
-HEIGHT = 1080                       # высота окна
+from config import get_field_size
+
+WIDTH = 1920                        # ширина окна (всегда фиксированная)
+HEIGHT = 1080                       # высота окна (всегда фиксированная)
 TILE_SIZE = 50                      # размер клетки сетки
 INTERFACE_HEIGHT = 80               # высота нижней панели интерфейса
-FIELD_HEIGHT = HEIGHT - INTERFACE_HEIGHT  # высота игрового поля
-COLS, ROWS = WIDTH // TILE_SIZE, FIELD_HEIGHT // TILE_SIZE  # кол-во клеток по X и Y
+FIELD_HEIGHT = HEIGHT - INTERFACE_HEIGHT  # область окна, в которой стоит карта
 
-VISIBILITY_RADIUS = 10               # радиус обзора юнитов игрока (в клетках)
+# Размеры карты в клетках (колонки, строки). Окно всегда 1920x1080,
+# карта выбранного размера ставится по центру. Числа можно менять в любой момент.
+# Максимум, который поместится: 38 x 20.
+FIELD_PRESETS = {
+    'small':  (30, 15),
+    'medium': (34, 18),
+    'large':  (38, 20),
+}
+DEFAULT_FIELD_PRESET = 'large'
+FIELD_PRESET_KEYS = list(FIELD_PRESETS.keys())  # порядок кнопки выбора карты
+MAP_OUTSIDE_COLOR = (18, 24, 38)                # цвет рамки вокруг карты
+
+# Эти значения заполняет apply_field_preset() — их нельзя импортировать
+# через "from settings import COLS", только читать как settings.COLS
+FIELD_PRESET = DEFAULT_FIELD_PRESET
+COLS = ROWS = 0                     # размер карты в клетках
+MAP_WIDTH = MAP_HEIGHT = 0          # размер карты в пикселях
+MAP_OFFSET_X = MAP_OFFSET_Y = 0     # положение левого верхнего угла карты в окне
+
+
+def apply_field_preset(key):
+    """Применяет размер карты по ключу ('small', 'medium', 'large') и центрует её в окне."""
+    global FIELD_PRESET, COLS, ROWS, MAP_WIDTH, MAP_HEIGHT, MAP_OFFSET_X, MAP_OFFSET_Y
+    if key not in FIELD_PRESETS:
+        key = DEFAULT_FIELD_PRESET
+    cols, rows = FIELD_PRESETS[key]
+    # карта не может быть больше области под неё
+    cols = max(1, min(cols, WIDTH // TILE_SIZE))
+    rows = max(1, min(rows, FIELD_HEIGHT // TILE_SIZE))
+    FIELD_PRESET = key
+    COLS, ROWS = cols, rows
+    MAP_WIDTH, MAP_HEIGHT = cols * TILE_SIZE, rows * TILE_SIZE
+    MAP_OFFSET_X = (WIDTH - MAP_WIDTH) // 2
+    MAP_OFFSET_Y = (FIELD_HEIGHT - MAP_HEIGHT) // 2
+
+
+apply_field_preset(get_field_size())    # размер карты из config.json
+
+VISIBILITY_RADIUS = 4               # радиус обзора юнитов игрока (в клетках)
 TURN_TIME = 25000                   # время на ход игрока (мс)
 GAME_VERSION = "0.1.3"              # версия игры
 
@@ -44,7 +83,9 @@ UNIT_TYPES = {
 }
 
 FONT_SIZES = {'normal': 28, 'big': 60, 'small': 20, 'card': 16, 'damage': 32}  # размеры шрифтов
-FONT_FALLBACKS = ["segoeuisymbol", "arial", "dejavusans"]  # список шрифтов для поиска
+FONT_REGULAR = "resources/fonts/Nunito-SemiBold.ttf"  # основной шрифт (текст, кнопки, подсказки)
+FONT_BOLD = "resources/fonts/Nunito-Bold.ttf"         # жирный шрифт (заголовки, цифры урона)
+FONT_FALLBACKS = ["segoeuisymbol", "arial", "dejavusans"]  # запасные системные шрифты, если файл шрифта не найден
 
 font = None         # обычный шрифт
 big_font = None     # большой шрифт (заголовки)

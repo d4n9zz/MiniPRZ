@@ -19,26 +19,116 @@ UI_STAGGER_DELAY,
 )
 from animation import staggered_progress
 
-def draw_top_interface(screen, stars, stars_change):
-    from settings import small_font, font, WIDTH
-    stars_text = f"Stars (+{stars_change})"
-    stars_label = small_font.render(stars_text, True, (240, 248, 255))
+# ---- Ряд карточек юнитов внизу: размеры и область прокрутки ----
+CARD_W, CARD_H = 70, 60       # размер одной карточки
+CARD_STEP = 80                # шаг между карточками (ширина + промежуток)
+CARDS_X = 280                 # левый край видимой области
+CARDS_VIEW_W = 480            # ширина видимой области (помещается 6 карточек)
+CARDS_ARROW_W = 26            # ширина кнопок-стрелок
+
+
+def cards_max_scroll(count):
+    """Максимальное смещение ряда в пикселях (0 — если всё помещается)."""
+    total = count * CARD_STEP - (CARD_STEP - CARD_W)
+    return max(0, total - CARDS_VIEW_W)
+
+
+def cards_view_rect():
+    return pygame.Rect(CARDS_X, FIELD_HEIGHT + 10, CARDS_VIEW_W, CARD_H)
+
+
+def cards_arrow_rects():
+    """Прямоугольники кнопок-стрелок (влево, вправо) для ряда карточек."""
+    y = FIELD_HEIGHT + 10
+    left = pygame.Rect(CARDS_X - CARDS_ARROW_W - 4, y, CARDS_ARROW_W, CARD_H)
+    right = pygame.Rect(CARDS_X + CARDS_VIEW_W + 4, y, CARDS_ARROW_W, CARD_H)
+    return left, right
+
+
+def _draw_cards_arrow(screen, rect, direction, enabled):
+    mouse_pos = pygame.mouse.get_pos()
+    if not enabled:
+        color = (55, 62, 82)
+    elif rect.collidepoint(mouse_pos):
+        color = UI_BUTTON_HOVER
+    else:
+        color = UI_BUTTON_NORMAL
+    pygame.draw.rect(screen, color, rect, border_radius=8)
+    pygame.draw.rect(screen, (255, 255, 255) if enabled else (90, 98, 120), rect, 2, border_radius=8)
+    cx, cy = rect.center
+    d = 7 * direction
+    points = [(cx + d, cy - 10), (cx + d, cy + 10), (cx - d, cy)]
+    pygame.draw.polygon(screen, UI_TEXT if enabled else (110, 118, 140), points)
+
+
+def _draw_unit_cards(screen, player_units, scroll):
+    """Рисует ряд карточек со смещением scroll; всё, что вне области, обрезается."""
+    view = cards_view_rect()
+    max_scroll = cards_max_scroll(len(player_units))
+    scroll = max(0, min(max_scroll, scroll))
+
+    old_clip = screen.get_clip()
+    screen.set_clip(view)
+    for i, unit in enumerate(player_units):
+        card_x = CARDS_X + i * CARD_STEP - int(scroll)
+        if card_x + CARD_W < view.left or card_x > view.right:
+            continue
+        draw_unit_card(screen, card_x, FIELD_HEIGHT + 10, unit)
+    screen.set_clip(old_clip)
+
+    if max_scroll > 0:
+        left_rect, right_rect = cards_arrow_rects()
+        _draw_cards_arrow(screen, left_rect, -1, scroll > 0)
+        _draw_cards_arrow(screen, right_rect, 1, scroll < max_scroll)
+
+def draw_stars_panel(screen, stars, stars_change):
+    """Панель звёзд и подсказок по горячим клавишам — по центру нижней панели.
+    Возвращает её прямоугольник (чтобы остальной интерфейс мог встать рядом)."""
+    from settings import small_font, font, card_font
+    hint_font = card_font or small_font
+    stars_label = small_font.render(f"Stars (+{stars_change})", True, (240, 248, 255))
     stars_value = font.render(str(stars), True, (255, 215, 0))
-    label_width = stars_label.get_width()
-    value_width = stars_value.get_width()
-    padding = 20
-    panel_height = 70
-    max_width = max(label_width, value_width)
-    panel_width = max_width + padding * 2
-    panel_x = WIDTH // 2 - panel_width // 2
-    panel_y = 10
-    panel_rect = pygame.Rect(panel_x, panel_y, panel_width, panel_height)
+
+    hint_lines = [
+        "[B] Shop   [RMB] Info   [L] Log",
+        "[Space] End turn",
+    ]
+    hint_surfs = [hint_font.render(t, True, (170, 182, 205)) for t in hint_lines]
+
+    padding = 14
+    stars_w = max(stars_label.get_width(), stars_value.get_width())
+    hints_w = max(s.get_width() for s in hint_surfs)
+    panel_w = padding * 3 + stars_w + hints_w
+    panel_h = 62
+
+    # Центр окна, но не заезжаем на стрелки прокрутки карточек слева
+    min_x = CARDS_X + CARDS_VIEW_W + CARDS_ARROW_W + 16
+    panel_x = max(WIDTH // 2 - panel_w // 2, min_x)
+    panel_y = FIELD_HEIGHT + 9
+    panel_rect = pygame.Rect(panel_x, panel_y, panel_w, panel_h)
+
     pygame.draw.rect(screen, (20, 25, 45), panel_rect, border_radius=12)
     pygame.draw.rect(screen, (100, 149, 237), panel_rect, 2, border_radius=12)
-    label_x = WIDTH // 2 - label_width // 2
-    value_x = WIDTH // 2 - value_width // 2
-    screen.blit(stars_label, (label_x, panel_y + 10))
-    screen.blit(stars_value, (value_x, panel_y + 32))
+
+    # Звёзды слева
+    stars_cx = panel_x + padding + stars_w // 2
+    screen.blit(stars_label, stars_label.get_rect(midtop=(stars_cx, panel_y + 5)))
+    screen.blit(stars_value, stars_value.get_rect(midtop=(stars_cx, panel_y + 27)))
+
+    # Разделитель
+    div_x = panel_x + padding * 2 + stars_w - padding // 2
+    pygame.draw.line(screen, (70, 85, 120), (div_x, panel_y + 10), (div_x, panel_y + panel_h - 10), 1)
+
+    # Подсказки справа
+    hints_x = panel_x + padding * 2 + stars_w
+    line_h = hint_surfs[0].get_height() + 4
+    total_h = line_h * len(hint_surfs) - 4
+    y = panel_y + (panel_h - total_h) // 2
+    for surf in hint_surfs:
+        screen.blit(surf, (hints_x, y))
+        y += line_h
+
+    return panel_rect
 
 def draw_menu_button(screen):
     from settings import small_font
@@ -106,7 +196,7 @@ def draw_pause_menu(screen, resume_btn, settings_btn, menu_btn, pause_anim=None)
 
 def draw_unit_card(screen, card_x, card_y, unit):
     from settings import card_font
-    card_width, card_height = 70, 60
+    card_width, card_height = CARD_W, CARD_H
     card_rect = pygame.Rect(card_x, card_y, card_width, card_height)
     pygame.draw.rect(screen, UI_BG, card_rect, border_radius=8)
     pygame.draw.rect(screen, unit.color, card_rect, 2, border_radius=8)
@@ -139,6 +229,9 @@ selected_unit,
 paused,
 pause_start_time,
 total_paused_time,
+cards_scroll=0,
+stars=0,
+stars_change=0,
 ):
     from settings import font, small_font
     panel_rect = pygame.Rect(0, FIELD_HEIGHT, WIDTH, INTERFACE_HEIGHT)
@@ -160,19 +253,23 @@ total_paused_time,
         button_text = font.render("END TURN", True, UI_TEXT)
         screen.blit(button_text, button_text.get_rect(center=btn_rect.center))
 
-    for i, unit in enumerate(player_units):
-        draw_unit_card(screen, 280 + i * 80, FIELD_HEIGHT + 10, unit)
+    _draw_unit_cards(screen, player_units, cards_scroll)
 
-    if selected_unit:
-        info_x = WIDTH // 2
-        info_y = FIELD_HEIGHT + 20
-        if font:
-            sel_text = font.render(f"SELECTED: {selected_unit.name}", True, selected_unit.color)
-            screen.blit(sel_text, sel_text.get_rect(center=(info_x, info_y)))
-            hp_text = font.render(
-                f"HP: {selected_unit.hp}/{selected_unit.max_hp}", True, UI_TEXT
-            )
-            screen.blit(hp_text, hp_text.get_rect(center=(info_x, info_y + 30)))
+    stars_rect = draw_stars_panel(screen, stars, stars_change)
+
+    if selected_unit and font:
+        # Между панелью звёзд и кнопкой END TURN
+        info_x = (stars_rect.right + btn_rect.left) // 2
+        sel_text = font.render(f"SELECTED: {selected_unit.name}", True, selected_unit.color)
+        hp_text = font.render(
+            f"HP: {selected_unit.hp}/{selected_unit.max_hp}", True, UI_TEXT
+        )
+        # Двухстрочный блок по центру панели: отступ сверху и снизу одинаковый
+        gap = 2
+        block_h = sel_text.get_height() + gap + hp_text.get_height()
+        top = FIELD_HEIGHT + (INTERFACE_HEIGHT - block_h) // 2
+        screen.blit(sel_text, sel_text.get_rect(midtop=(info_x, top)))
+        screen.blit(hp_text, hp_text.get_rect(midtop=(info_x, top + sel_text.get_height() + gap)))
 
     if current_turn == "player":
         _draw_timer(
@@ -223,4 +320,3 @@ screen, turn_timer_start, turn_time, small_font, paused, pause_start_time, total
         time_y = bar_y + bar_h // 2 - time_text.get_height() // 2
         screen.blit(bg_surf, (bar_x - time_text.get_width() - 20, time_y))
         screen.blit(time_text, (bar_x - time_text.get_width() - 16, time_y))
-

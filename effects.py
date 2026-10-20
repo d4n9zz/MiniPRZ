@@ -105,3 +105,54 @@ class DeathEffect:
         for p in self.particles:
             if p['size'] > 0:
                 pygame.draw.circle(screen, p['color'], (int(p['x']), int(p['y'])), int(p['size']))
+
+
+class BattleLog:
+    """Журнал боя: последние события; записи сами гаснут, клавиша [L] закрепляет журнал."""
+    MAX_ENTRIES = 60      # сколько записей хранить
+    SHOW_MS = 7000        # сколько записи видны полностью
+    FADE_MS = 2000        # сколько они потом гаснут
+    PINNED_LINES = 12     # сколько строк видно в закреплённом режиме
+    FADING_LINES = 7      # сколько строк видно в обычном режиме
+
+    def __init__(self):
+        self.entries = []
+        self.pinned = False
+
+    def add(self, text, color=(240, 248, 255)):
+        self.entries.append({'text': text, 'color': color, 'time': pygame.time.get_ticks()})
+        if len(self.entries) > self.MAX_ENTRIES:
+            del self.entries[:len(self.entries) - self.MAX_ENTRIES]
+
+    def toggle(self):
+        self.pinned = not self.pinned
+
+    def draw(self, screen, x, y, font):
+        if not font:
+            return
+        now = pygame.time.get_ticks()
+        lines = []
+        if self.pinned:
+            lines = [(e, 255) for e in self.entries[-self.PINNED_LINES:]]
+        else:
+            for e in self.entries[-self.FADING_LINES:]:
+                age = now - e['time']
+                if age >= self.SHOW_MS + self.FADE_MS:
+                    continue
+                if age <= self.SHOW_MS:
+                    alpha = 255
+                else:
+                    alpha = int(255 * (1 - (age - self.SHOW_MS) / self.FADE_MS))
+                lines.append((e, alpha))
+        if not lines:
+            return
+        rendered = [(font.render(e['text'], True, e['color']), a) for e, a in lines]
+        line_h = font.get_height() + 3
+        width = max(260, max(s.get_width() for s, _ in rendered) + 16)
+        height = len(rendered) * line_h + 12
+        panel = pygame.Surface((width, height), pygame.SRCALPHA)
+        panel.fill((15, 20, 35, int(170 * max(a for _, a in rendered) / 255)))
+        screen.blit(panel, (x, y))
+        for i, (surf, alpha) in enumerate(rendered):
+            surf.set_alpha(alpha)
+            screen.blit(surf, (x + 8, y + 6 + i * line_h))

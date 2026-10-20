@@ -5,7 +5,8 @@ CONFIG_FILE = "config.json"
 DEFAULT_CONFIG = {
     "music_volume": 1.0,
     "background": "bg1",
-    "snow_enabled": True
+    "snow_enabled": True,
+    "field_size": "medium"
 }
 
 
@@ -65,6 +66,17 @@ def get_snow_enabled():
 def set_snow_enabled(enabled):
     config = load_config()
     config["snow_enabled"] = enabled
+    save_config(config)
+
+
+def get_field_size():
+    config = load_config()
+    return config.get("field_size", DEFAULT_CONFIG["field_size"])
+
+
+def set_field_size(size_key):
+    config = load_config()
+    config["field_size"] = size_key
     save_config(config)
 
 
