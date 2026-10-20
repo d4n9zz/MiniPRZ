@@ -3,6 +3,7 @@ import random
 import math
 import settings
 import terrain
+import iso
 from settings import (
 WIDTH,
 HEIGHT,
@@ -108,6 +109,9 @@ def _get_attackable_tiles(unit, enemy_units):
                         attackable.append((nx, ny))
     return attackable
 
+ROTATE_SENSITIVITY = 0.008   # радиан на пиксель движения мыши (0.008 ≈ 1 оборот за ~780 px)
+
+
 class Game:
     return_to_menu: bool
     __slots__ = [
@@ -125,9 +129,10 @@ class Game:
         "bot_city_img", "player_gold",
         "shop_open", "shop_city_pos", "shop_buttons", "shop_close_btn",
         "shop_open_time", "context_tooltip_unit",
-        "pause_anim", "map_rect",
+        "pause_anim", "map_rect", "rotating", "view_dirty",
         "cards_scroll", "cards_scroll_cur", "cards_last_selected",
         "battle_log", "terrain_surface", "map_seed", "visible_now",
+        "fog_cache_key", "fog_cache_surf", "mountain_sprite", "mountain_tiles",
     ]
 
     def __init__(self, screen, clock, num_bots=None):
@@ -136,6 +141,9 @@ class Game:
         if num_bots is not None:
             GAME_CONFIG['num_bots'] = num_bots
         play_game()
+        self.rotating = False    # зажата ли СКМ (идёт вращение камеры)
+        self.view_dirty = False  # угол поменялся — надо перерисовать статичные слои
+        iso.set_angle(0)         # каждая новая игра начинается с обычного вида
         self._apply_selected_map()
         self._load_city_images()
         self._reset_game()
@@ -196,21 +204,46 @@ class Game:
 
     def _create_static_surfaces(self):
         # Окно всегда одного размера, карта стоит по центру области поля
-        self.map_rect = pygame.Rect(
-            settings.MAP_OFFSET_X, settings.MAP_OFFSET_Y,
-            settings.MAP_WIDTH, settings.MAP_HEIGHT,
-        )
+        # (при свободном повороте карта «выглядывает» за свой ромб, поэтому окно карты —
+        # вся область поля, а центр карты ставит iso._screen_center())
+        self.map_rect = pygame.Rect(0, 0, WIDTH, FIELD_HEIGHT)
         self.grid_surface = pygame.Surface(self.map_rect.size, pygame.SRCALPHA)
         self._draw_grid_static()
         self.bg_surface = pygame.Surface((WIDTH, FIELD_HEIGHT))
         self._draw_background_static()
 
     def _mouse_to_grid(self, mouse_x, mouse_y):
-        # Позиция мыши в окне -> клетка карты (с учётом смещения карты)
-        return [
-            (mouse_x - self.map_rect.x) // TILE_SIZE,
-            (mouse_y - self.map_rect.y) // TILE_SIZE,
-        ]
+        # Позиция мыши в окне -> клетка карты (изометрия, с учётом смещения карты).
+        # Юнит нарисован выше своей клетки, поэтому клик по его спрайту (даже по «голове»)
+        # засчитываем как клик по клетке юнита, а не по клетке позади него.
+        mx = mouse_x - self.map_rect.x
+        my = mouse_y - self.map_rect.y
+        best = None
+        for unit in self._get_all_units():
+            if not unit.is_player and tuple(unit.pos) not in self.visible_now:
+                continue
+            gx, gy = iso.world_to_screen(unit.px, unit.py)
+            if gx - 20 <= mx < gx + 20 and gy - settings.ISO_UNIT_LIFT - 20 <= my < gy + 6:
+                depth = iso.depth(unit.px / TILE_SIZE - 0.5, unit.py / TILE_SIZE - 0.5)
+                if best is None or depth > best[0]:
+                    best = (depth, unit)
+        if best is not None:
+            return list(best[1].pos)
+        return iso.screen_to_grid(mx, my)
+
+    def _rotate_view(self, delta_angle):
+        # Свободный поворот камеры (радианы): логика не меняется,
+        # перерисовываем только то, что нарисовано заранее
+        iso.set_angle(iso.ANGLE + delta_angle)
+        self.view_dirty = True
+
+    def _refresh_view(self):
+        # Лёгкая перерисовка статичных слоёв (без пересоздания поверхностей) —
+        # вызывается раз в кадр, пока крутим камеру
+        self.grid_surface.fill((0, 0, 0, 0))
+        self._draw_grid_static()
+        self._draw_background_static()
+        self.terrain_surface = terrain.build_surface(self.map_rect.size)
 
     def _load_city_images(self):
         self.player_city_img = None
@@ -218,37 +251,52 @@ class Game:
         try:
             player_city = pygame.image.load("resources/ui/player_city.png").convert_alpha()
             self.player_city_img = pygame.transform.smoothscale(
-                player_city, (TILE_SIZE, TILE_SIZE)
+                player_city, (settings.ISO_W - 6, settings.ISO_W - 6)
             )
         except pygame.error:
             pass
         try:
             bot_city = pygame.image.load("resources/ui/bot_city.png").convert_alpha()
-            self.bot_city_img = pygame.transform.smoothscale(bot_city, (TILE_SIZE, TILE_SIZE))
+            self.bot_city_img = pygame.transform.smoothscale(bot_city, (settings.ISO_W - 6, settings.ISO_W - 6))
         except pygame.error:
             pass
 
     def _draw_grid_static(self):
+        # Каждая клетка — ромб; цвет чуть чередуется, чтобы сетка читалась как «шахматка»
         for y in range(settings.ROWS):
             for x in range(settings.COLS):
-                rect = pygame.Rect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE)
-                pygame.draw.rect(self.grid_surface, GRID_COLOR, rect)
-                pygame.draw.rect(self.grid_surface, GRID_BORDER, rect, 1)
+                pts = iso.diamond(x, y)
+                color = GRID_COLOR if (x + y) % 2 == 0 else (
+                    GRID_COLOR[0], GRID_COLOR[1] + 12, GRID_COLOR[2], GRID_COLOR[3] - 25)
+                pygame.draw.polygon(self.grid_surface, color, pts)
+                pygame.draw.polygon(self.grid_surface, GRID_BORDER, pts, 1)
 
     def _draw_background_static(self):
-        # Вокруг карты тёмная рамка, внутри карты градиент травы
+        # Вокруг карты тёмная рамка, внутри повёрнутого прямоугольника карты — градиент травы.
+        # Заливаем построчно (по 2 px): так дёшево перерисовывать каждый кадр при вращении.
         self.bg_surface.fill(MAP_OUTSIDE_COLOR)
-        rect = self.map_rect
-        for y in range(rect.height):
-            ratio = y / rect.height
-            r = int(BG_TOP[0] * (1 - ratio) + BG_BOTTOM[0] * ratio)
-            g = int(BG_TOP[1] * (1 - ratio) + BG_BOTTOM[1] * ratio)
-            b = int(BG_TOP[2] * (1 - ratio) + BG_BOTTOM[2] * ratio)
-            pygame.draw.line(
-                self.bg_surface, (r, g, b),
-                (rect.left, rect.top + y), (rect.right - 1, rect.top + y),
+        outline = iso.map_outline()
+        n = len(outline)
+        top = max(0, min(p[1] for p in outline))
+        bottom = min(FIELD_HEIGHT - 1, max(p[1] for p in outline))
+        span = max(1, bottom - top)
+        for y in range(top, bottom + 1, 2):
+            xs = []
+            for i in range(n):
+                (x1, y1), (x2, y2) = outline[i], outline[(i + 1) % n]
+                if y1 != y2 and min(y1, y2) <= y <= max(y1, y2):
+                    xs.append(x1 + (y - y1) * (x2 - x1) / (y2 - y1))
+            if len(xs) < 2:
+                continue
+            ratio = (y - top) / span
+            color = (
+                int(BG_TOP[0] * (1 - ratio) + BG_BOTTOM[0] * ratio),
+                int(BG_TOP[1] * (1 - ratio) + BG_BOTTOM[1] * ratio),
+                int(BG_TOP[2] * (1 - ratio) + BG_BOTTOM[2] * ratio),
             )
-        pygame.draw.rect(self.bg_surface, UI_BORDER, rect.inflate(8, 8), 4)
+            x_min, x_max = int(min(xs)), int(max(xs))
+            pygame.draw.rect(self.bg_surface, color, (x_min, y, x_max - x_min + 1, 2))
+        pygame.draw.polygon(self.bg_surface, UI_BORDER, outline, 4)
 
     def _reset_game(self):
         # Ряд карточек юнитов возвращаем в начало
@@ -300,6 +348,8 @@ class Game:
         # Местность строим, когда все города уже стоят: она не должна их запирать
         terrain.generate([self.player_spawn] + bot_spawns, seed)
         self.terrain_surface = terrain.build_surface(self.map_rect.size)
+        self.mountain_sprite = terrain.build_mountain_sprite()
+        self.mountain_tiles = terrain.mountain_tiles()
         for i, spawn in enumerate(bot_spawns):
             color = GAME_CONFIG['bot_colors'][i % len(GAME_CONFIG['bot_colors'])]
             personality = GAME_CONFIG['bot_personalities'][i % len(GAME_CONFIG['bot_personalities'])]
@@ -335,10 +385,8 @@ class Game:
         self.music_fade_target = 1.0
         self.music_fade_current = 1.0
         self.music_fade_speed = 0.03
-        self.fog_unexplored_surf = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
-        self.fog_unexplored_surf.fill(FOG_UNEXPLORED)
-        self.fog_explored_surf = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
-        self.fog_explored_surf.fill(FOG_EXPLORED_NO_VIS)
+        self.fog_cache_key = None      # туман перерисовывается только когда он изменился
+        self.fog_cache_surf = None
         self.player_gold = 15
         self.shop_open = False
         self.shop_city_pos = None
@@ -411,66 +459,50 @@ class Game:
         return visible
 
     def _draw_city(self, pos, is_player, team_color=None):
-        city_x = pos[0] * TILE_SIZE
-        city_y = pos[1] * TILE_SIZE
+        # pos — центральная клетка города; рисуем «здание», стоящее на ромбе
+        cx, cy = iso.tile_center(pos[0], pos[1])
         city_img = self.player_city_img if is_player else self.bot_city_img
         if city_img:
-            self.screen.blit(city_img, (city_x, city_y))
+            rect = city_img.get_rect(midbottom=(cx, cy + settings.ISO_H // 2 - 2))
+            self.screen.blit(city_img, rect)
+            return
+        if is_player:
+            city_color = PLAYER_HIGHLIGHT
         else:
-            if is_player:
-                city_color = PLAYER_HIGHLIGHT
-            else:
-                city_color = team_color if team_color else BOT_GLOW
-            center_x = city_x + TILE_SIZE // 2
-            center_y = city_y + TILE_SIZE // 2
-            pygame.draw.rect(
-                self.screen, city_color, (city_x + 5, city_y + 15, TILE_SIZE - 10, TILE_SIZE - 20),
-                border_radius=3,
-            )
-            pygame.draw.polygon(
-                self.screen,
-                (139, 69, 19),
-                [(center_x - 15, city_y + 15), (center_x + 15, city_y + 15), (center_x, city_y + 5)],
-            )
-            pygame.draw.rect(self.screen, (139, 69, 19), (city_x + 18, city_y + 25, 6, 15))
-            pygame.draw.rect(self.screen, (139, 69, 19), (city_x + 26, city_y + 25, 6, 15))
-            tower_h = 12
-            pygame.draw.rect(
-                self.screen, city_color, (city_x + 2, city_y + 10, 8, tower_h), border_radius=2
-            )
-            pygame.draw.rect(
-                self.screen,
-                city_color,
-                (city_x + TILE_SIZE - 10, city_y + 10, 8, tower_h),
-                border_radius=2,
-            )
-            pygame.draw.circle(self.screen, (255, 255, 255), (city_x + 6, city_y + 10), 3)
-            pygame.draw.circle(
-                self.screen, (255, 255, 255), (city_x + TILE_SIZE - 6, city_y + 10), 3
-            )
+            city_color = team_color if team_color else BOT_GLOW
+        base_y = cy + 6
+        iso.draw_box(self.screen, cx, base_y, 24, 18, city_color)
+        iso.draw_pyramid(self.screen, cx, base_y - 18, 27, 16, (139, 69, 19))
+        # Флажок на крыше
+        pole_top = (cx, base_y - 18 - 16 - 12)
+        pygame.draw.line(self.screen, (60, 40, 20), (cx, base_y - 18 - 16), pole_top, 2)
+        pygame.draw.polygon(
+            self.screen, (255, 255, 255),
+            [pole_top, (pole_top[0] + 9, pole_top[1] + 3), (pole_top[0], pole_top[1] + 6)],
+        )
 
     def _draw_player_aura(self, city_center_pos):
-        cx = city_center_pos[0] * TILE_SIZE + TILE_SIZE // 2
-        cy = city_center_pos[1] * TILE_SIZE + TILE_SIZE // 2
+        cx, cy = iso.tile_center(city_center_pos[0], city_center_pos[1])
         t = pygame.time.get_ticks()
         base_angle = t * PLAYER_AURA_ROTATION_SPEED
         pulse = int(40 * abs(math.sin(t * 0.002)))
         aura_alpha = min(255, PLAYER_AURA_COLOR[3] + pulse)
-        ring_surf = pygame.Surface((PLAYER_AURA_RADIUS * 2 + 20, PLAYER_AURA_RADIUS * 2 + 20), pygame.SRCALPHA)
-        ring_center = PLAYER_AURA_RADIUS + 10
-        pygame.draw.circle(
+        # Аура лежит на земле, поэтому в изометрии круг превращается в эллипс 2:1
+        rx = PLAYER_AURA_RADIUS
+        ry = PLAYER_AURA_RADIUS // 2
+        ring_surf = pygame.Surface((rx * 2 + 20, ry * 2 + 20), pygame.SRCALPHA)
+        pygame.draw.ellipse(
             ring_surf,
             (*PLAYER_AURA_COLOR[:3], aura_alpha // 3),
-            (ring_center, ring_center),
-            PLAYER_AURA_RADIUS,
+            (10, 10, rx * 2, ry * 2),
             1,
         )
-        self.screen.blit(ring_surf, (cx - ring_center, cy - ring_center))
+        self.screen.blit(ring_surf, (cx - rx - 10, cy - ry - 10))
         num_symbols = len(PLAYER_AURA_SYMBOLS)
         for i, symbol in enumerate(PLAYER_AURA_SYMBOLS):
             angle = base_angle + (i * 2 * math.pi / num_symbols)
-            sx = cx + int(PLAYER_AURA_RADIUS * math.cos(angle))
-            sy = cy + int(PLAYER_AURA_RADIUS * math.sin(angle))
+            sx = cx + int(rx * math.cos(angle))
+            sy = cy + int(ry * math.sin(angle))
             symbol_alpha = int(aura_alpha * (0.6 + 0.4 * abs(math.sin(t * 0.003 + i))))
             self._draw_aura_star(sx, sy, symbol.strip(), PLAYER_AURA_COLOR[:3], symbol_alpha)
 
@@ -492,29 +524,21 @@ class Game:
         surf.set_alpha(alpha)
         self.screen.blit(surf, (x - c, y - c))
 
+    @staticmethod
+    def _zone_polygon(spawn):
+        x, y = spawn
+        return [iso.corner(x, y), iso.corner(x + 3, y), iso.corner(x + 3, y + 3), iso.corner(x, y + 3)]
+
     def _draw_spawn_zones(self, visible):
+        # Здесь только то, что лежит на земле: рамки зон и аура.
+        # Сами города рисует _draw_units — они должны сортироваться по глубине с юнитами.
         player_city_pos = [self.player_spawn[0] + 1, self.player_spawn[1] + 1]
-        player_zone_rect = pygame.Rect(
-            self.player_spawn[0] * TILE_SIZE,
-            self.player_spawn[1] * TILE_SIZE,
-            TILE_SIZE * 3,
-            TILE_SIZE * 3,
-        )
-        pygame.draw.rect(self.screen, PLAYER_HIGHLIGHT, player_zone_rect, 3)
-        self._draw_city(player_city_pos, is_player=True)
+        pygame.draw.polygon(self.screen, PLAYER_HIGHLIGHT, self._zone_polygon(self.player_spawn), 3)
         self._draw_player_aura(player_city_pos)
         for team in self.enemy_teams:
             city_pos = [team['spawn'][0] + 1, team['spawn'][1] + 1]
-            city_visible = _is_city_visible(city_pos, visible)
-            if city_visible:
-                zone_rect = pygame.Rect(
-                    team['spawn'][0] * TILE_SIZE,
-                    team['spawn'][1] * TILE_SIZE,
-                    TILE_SIZE * 3,
-                    TILE_SIZE * 3,
-                )
-                pygame.draw.rect(self.screen, team['color'], zone_rect, 3)
-                self._draw_city(city_pos, is_player=False, team_color=team['color'])
+            if _is_city_visible(city_pos, visible):
+                pygame.draw.polygon(self.screen, team['color'], self._zone_polygon(team['spawn']), 3)
 
     def _draw_shop_menu(self):
         from settings import font, small_font
@@ -593,9 +617,9 @@ class Game:
             if self.selected_unit is not None:
                 return
             city_pos = [self.player_spawn[0] + 1, self.player_spawn[1] + 1]
-            city_x = city_pos[0] * TILE_SIZE + self.map_rect.x
-            city_y = city_pos[1] * TILE_SIZE + self.map_rect.y
-            city_rect = pygame.Rect(city_x, city_y, TILE_SIZE, TILE_SIZE)
+            cx, cy = iso.tile_center(city_pos[0], city_pos[1])
+            # Область клика — всё здание: от флажка до земли
+            city_rect = pygame.Rect(cx + self.map_rect.x - 30, cy + self.map_rect.y - 56, 60, 72)
             if city_rect.collidepoint(mouse_x, mouse_y):
                 self.shop_open_time = pygame.time.get_ticks()
                 self.shop_open = True
@@ -637,21 +661,38 @@ class Game:
         for tx, ty in attackable_tiles:
             if (tx, ty) not in visible:
                 continue
-            rect = pygame.Rect(tx * TILE_SIZE, ty * TILE_SIZE, TILE_SIZE, TILE_SIZE)
-            highlight_surf = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
-            pygame.draw.rect(highlight_surf, ATTACK_RANGE_COLOR, (0, 0, TILE_SIZE, TILE_SIZE))
-            pygame.draw.rect(highlight_surf, (255, 255, 255), (0, 0, TILE_SIZE, TILE_SIZE), 2)
-            self.screen.blit(highlight_surf, rect.topleft)
+            pts = iso.diamond(tx, ty)
+            min_x = min(p[0] for p in pts)
+            min_y = min(p[1] for p in pts)
+            w = max(p[0] for p in pts) - min_x + 1
+            h = max(p[1] for p in pts) - min_y + 1
+            local = [(px - min_x, py - min_y) for px, py in pts]
+            highlight_surf = pygame.Surface((w, h), pygame.SRCALPHA)
+            pygame.draw.polygon(highlight_surf, ATTACK_RANGE_COLOR, local)
+            pygame.draw.polygon(highlight_surf, (255, 255, 255), local, 2)
+            self.screen.blit(highlight_surf, (min_x, min_y))
 
     def _draw_fog_of_war(self, visible):
-        for y in range(settings.ROWS):
-            for x in range(settings.COLS):
-                tile_pos = (x, y)
-                tile_rect = pygame.Rect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE)
-                if tile_pos not in self.explored_tiles:
-                    self.screen.blit(self.fog_unexplored_surf, tile_rect.topleft)
-                elif tile_pos not in visible:
-                    self.screen.blit(self.fog_explored_surf, tile_rect.topleft)
+        # Туман рисуем в одну поверхность и перестраиваем только при изменении:
+        # ромбы не прямоугольные, и 700+ blit-ов за кадр были бы лишними.
+        key = (round(iso.ANGLE, 4), len(self.explored_tiles), frozenset(visible))
+        if self.fog_cache_surf is None or key != self.fog_cache_key:
+            surf = pygame.Surface(self.map_rect.size, pygame.SRCALPHA)
+            for y in range(settings.ROWS):
+                for x in range(settings.COLS):
+                    tile_pos = (x, y)
+                    if tile_pos not in self.explored_tiles:
+                        color = FOG_UNEXPLORED
+                    elif tile_pos not in visible:
+                        color = FOG_EXPLORED_NO_VIS
+                    else:
+                        continue
+                    pts = iso.diamond(x, y)
+                    pygame.draw.polygon(surf, color, pts)
+                    pygame.draw.polygon(surf, color, pts, 1)   # закрывает швы между ромбами
+            self.fog_cache_surf = surf
+            self.fog_cache_key = key
+        self.screen.blit(self.fog_cache_surf, (0, 0))
 
     def _draw_hp_bar(self, unit, draw_x, draw_y):
         bar_width = TILE_SIZE - 10
@@ -673,60 +714,88 @@ class Game:
             pygame.draw.rect(self.screen, bar_color, fill_rect, border_radius=3)
         pygame.draw.rect(self.screen, (255, 255, 255), bg_rect, 1, border_radius=3)
 
-    def _draw_units(self, visible):
+    def _unit_image(self, unit):
         from settings import player_unit_imgs, bot_unit_imgs
-        all_units = self._get_all_units()
-        for unit in all_units:
+        if unit.is_player:
+            return player_unit_imgs.get(unit.unit_type)
+        unit_img = None
+        for team_index, team in enumerate(self.enemy_teams):
+            if unit in team['units']:
+                team_img_dict = bot_unit_imgs.get(team_index, {}) if isinstance(bot_unit_imgs, dict) else {}
+                if isinstance(team_img_dict, dict):
+                    unit_img = team_img_dict.get(unit.unit_type)
+                if unit_img is None and isinstance(bot_unit_imgs, dict):
+                    unit_img = bot_unit_imgs.get(unit.unit_type)
+                break
+        return unit_img
+
+    def _draw_one_unit(self, unit):
+        unit_img = self._unit_image(unit)
+        # Центр клетки на земле (плавно едет вместе с анимацией хода) + тряска от удара
+        ground_x, ground_y = iso.world_to_screen(unit.px, unit.py)
+        ground_x += unit.shake_offset[0]
+        ground_y += unit.shake_offset[1]
+        draw_x = ground_x
+        draw_y = ground_y - settings.ISO_UNIT_LIFT      # спрайт «стоит» над клеткой
+        # Тень на земле
+        shadow = pygame.Surface((36, 18), pygame.SRCALPHA)
+        pygame.draw.ellipse(shadow, (0, 0, 0, 70), (0, 0, 36, 18))
+        self.screen.blit(shadow, (ground_x - 18, ground_y - 9))
+        # Кольцо выбора лежит на земле — эллипс 2:1
+        if unit == self.selected_unit:
+            for i in range(3):
+                alpha = 200 - i * 50
+                rw = settings.ISO_W - 14 + i * 8
+                rh = rw // 2
+                ring = pygame.Surface((rw + 4, rh + 4), pygame.SRCALPHA)
+                pygame.draw.ellipse(ring, (*PLAYER_HIGHLIGHT, alpha), (2, 2, rw, rh), 3)
+                self.screen.blit(ring, (ground_x - rw // 2 - 2, ground_y - rh // 2 - 2))
+        if unit_img:
+            img_rect = unit_img.get_rect(center=(draw_x, draw_y))
+            self.screen.blit(unit_img, img_rect)
+        else:
+            if unit.is_player:
+                glow = PLAYER_HIGHLIGHT
+            else:
+                glow = BOT_GLOW
+                for team in self.enemy_teams:
+                    if unit in team['units']:
+                        glow = team['color']
+                        break
+            pygame.draw.circle(self.screen, glow, (draw_x, draw_y), TILE_SIZE // 3 + 4)
+            pygame.draw.circle(self.screen, unit.color, (draw_x, draw_y), TILE_SIZE // 3)
+            pygame.draw.circle(self.screen, (255, 255, 255), (draw_x, draw_y), TILE_SIZE // 3, 2)
+        self._draw_hp_bar(unit, draw_x, draw_y)
+
+    def _draw_units(self, visible):
+        # Всё, что стоит «в мире» (горы, города, юниты), рисуем от дальних клеток к ближним:
+        # так передние объекты правильно перекрывают задние (порядок задаёт iso.depth).
+        items = []
+        for (x, y) in self.mountain_tiles:
+            if (x, y) in self.explored_tiles:
+                items.append((iso.depth(x, y), 0, 'mountain', (x, y)))
+        items.append((iso.depth(self.player_spawn[0] + 1, self.player_spawn[1] + 1), 0, 'city',
+                      (True, [self.player_spawn[0] + 1, self.player_spawn[1] + 1], None)))
+        for team in self.enemy_teams:
+            city_pos = [team['spawn'][0] + 1, team['spawn'][1] + 1]
+            if _is_city_visible(city_pos, visible):
+                items.append((iso.depth(city_pos[0], city_pos[1]), 0, 'city', (False, city_pos, team['color'])))
+        for unit in self._get_all_units():
             if tuple(unit.pos) not in visible and not unit.is_player:
                 continue
-            if unit.is_player:
-                unit_img_dict = player_unit_imgs
-                unit_img = unit_img_dict.get(unit.unit_type)
+            depth = iso.depth(unit.px / TILE_SIZE - 0.5, unit.py / TILE_SIZE - 0.5)
+            items.append((depth, 1, 'unit', unit))
+        items.sort(key=lambda it: (it[0], it[1]))
+        sprite_h = settings.ISO_PEAK_H
+        for _, _, kind, data in items:
+            if kind == 'mountain':
+                top_x, top_y = iso.tile_top(data[0], data[1])
+                self.screen.blit(self.mountain_sprite,
+                                 (int(top_x) - settings.ISO_W // 2, int(top_y) - sprite_h))
+            elif kind == 'city':
+                self._draw_city(data[1], is_player=data[0], team_color=data[2])
             else:
-                unit_img = None
-                for team_index, team in enumerate(self.enemy_teams):
-                    if unit in team['units']:
-                        team_img_dict = bot_unit_imgs.get(team_index, {}) if isinstance(bot_unit_imgs, dict) else {}
-                        if isinstance(team_img_dict, dict):
-                            unit_img = team_img_dict.get(unit.unit_type)
-                        if unit_img is None and isinstance(bot_unit_imgs, dict):
-                            unit_img = bot_unit_imgs.get(unit.unit_type)
-                        break
-            draw_x = int(unit.px) + unit.shake_offset[0]
-            draw_y = int(unit.py) + unit.shake_offset[1]
-            if unit_img:
-                img_rect = unit_img.get_rect(center=(draw_x, draw_y))
-                self.screen.blit(unit_img, img_rect)
-            else:
-                if unit.is_player:
-                    glow = PLAYER_HIGHLIGHT
-                else:
-                    glow = BOT_GLOW
-                    for team in self.enemy_teams:
-                        if unit in team['units']:
-                            glow = team['color']
-                            break
-                pygame.draw.circle(self.screen, glow, (draw_x, draw_y), TILE_SIZE // 3 + 10)
-                pygame.draw.circle(self.screen, unit.color, (draw_x, draw_y), TILE_SIZE // 3)
-                pygame.draw.circle(self.screen, (255, 255, 255), (draw_x, draw_y), TILE_SIZE // 3, 2)
-            self._draw_hp_bar(unit, draw_x, draw_y)
-            if unit == self.selected_unit:
-                for i in range(3):
-                    alpha = 200 - i * 50
-                    highlight_surf = pygame.Surface(
-                        (TILE_SIZE + 20, TILE_SIZE + 20), pygame.SRCALPHA
-                    )
-                    pygame.draw.circle(
-                        highlight_surf,
-                        (*PLAYER_HIGHLIGHT, alpha),
-                        (TILE_SIZE // 2 + 10, TILE_SIZE // 2 + 10),
-                        TILE_SIZE // 3 + 12 + i * 4,
-                        3,
-                    )
-                    self.screen.blit(
-                        highlight_surf,
-                        (unit.px - TILE_SIZE // 2 - 10, unit.py - TILE_SIZE // 2 - 10),
-                    )
+                self._draw_one_unit(data)
 
     def _draw_context_tooltip(self, visible):
         from settings import small_font
@@ -764,12 +833,14 @@ class Game:
         line_height = small_font.get_height() + 4
         tooltip_width = 180
         tooltip_height = len(info_lines) * line_height + padding * 2
-        unit_screen_x = unit.pos[0] * TILE_SIZE + TILE_SIZE // 2 + self.map_rect.x
-        unit_screen_y = unit.pos[1] * TILE_SIZE + TILE_SIZE // 2 + self.map_rect.y
-        tooltip_x = unit_screen_x + TILE_SIZE // 2 + 10
+        ground_x, ground_y = iso.tile_center(unit.pos[0], unit.pos[1])
+        unit_screen_x = ground_x + self.map_rect.x
+        unit_screen_y = ground_y - settings.ISO_UNIT_LIFT + self.map_rect.y
+        half_w = settings.ISO_W // 2
+        tooltip_x = unit_screen_x + half_w + 10
         tooltip_y = unit_screen_y - tooltip_height // 2
         if tooltip_x + tooltip_width > WIDTH:
-            tooltip_x = unit_screen_x - TILE_SIZE // 2 - tooltip_width - 10
+            tooltip_x = unit_screen_x - half_w - tooltip_width - 10
         if tooltip_y < 0:
             tooltip_y = 10
         if tooltip_y + tooltip_height > FIELD_HEIGHT:
@@ -849,9 +920,21 @@ class Game:
                     delta = -event.y if event.y else event.x
                     if delta:
                         self._scroll_cards(1 if delta > 0 else -1)
+            if event.type == pygame.MOUSEMOTION and self.rotating:
+                if self.paused or self.shop_open or not event.buttons[1]:
+                    self.rotating = False
+                else:
+                    self._rotate_view(-event.rel[0] * ROTATE_SENSITIVITY)
+            if event.type == pygame.MOUSEBUTTONUP and event.button == 2:
+                self.rotating = False
             if event.type == pygame.MOUSEBUTTONDOWN and not self.game_over:
                 if event.button in (4, 5):
                     continue  # старые события колеса — не считаем кликами
+                if event.button == 2:
+                    # Зажатая средняя кнопка: тянем мышь влево/вправо — камера крутится свободно
+                    if not self.paused and not self.shop_open:
+                        self.rotating = True
+                    continue
                 mouse_x, mouse_y = pygame.mouse.get_pos()
                 if event.button == 3:
                     from utils import get_unit_at
@@ -1080,6 +1163,9 @@ class Game:
     def run(self):
         running = True
         while running:
+            if self.view_dirty:
+                self._refresh_view()
+                self.view_dirty = False
             visible = self._get_visible_tiles()
             self.explored_tiles.update(visible)
             self.visible_now = visible
@@ -1093,8 +1179,8 @@ class Game:
             self.screen = real_screen.subsurface(self.map_rect)
             try:
                 self._draw_spawn_zones(visible)
-                self._draw_units(visible)
                 self._draw_attack_indicators(visible)
+                self._draw_units(visible)
                 for dmg in self.damage_numbers:
                     dmg.draw(self.screen, visible)
                 for effect in self.battle_effects:
@@ -1136,4 +1222,4 @@ class Game:
             self._update_music_fade()
             pygame.display.update()
             self.clock.tick(60)
-        return self.return_to_menu
+        return self.return_to_menu

@@ -3,6 +3,7 @@ from collections import deque
 
 import pygame
 import settings
+import iso
 
 WATER = 'water'
 MOUNTAIN = 'mountain'
@@ -104,41 +105,50 @@ def generate(spawns, seed):
     BLOCKED.clear()   # совсем не вышло — играем на чистом поле
 
 
-# ========== ОТРИСОВКА ==========
+# ========== ОТРИСОВКА (изометрия) ==========
+
+def mountain_tiles():
+    """Клетки с горами — их рисуют отдельно, вместе с юнитами, по глубине."""
+    return sorted(pos for pos, kind in BLOCKED.items() if kind == MOUNTAIN)
+
 
 def build_surface(size):
-    """Рисует всю местность один раз на прозрачную поверхность размера карты."""
+    """Рисует воду (плоскую) один раз на прозрачную поверхность размера карты."""
     surf = pygame.Surface(size, pygame.SRCALPHA)
-    t = settings.TILE_SIZE
-    k = t / 50.0   # все размеры ниже подобраны под клетку 50 px
-
-    def p(x, y):
-        return int(x * k), int(y * k)
-
     for (x, y), kind in BLOCKED.items():
-        ox, oy = x * t, y * t
-        rect = pygame.Rect(ox, oy, t, t)
-        if kind == WATER:
-            pygame.draw.rect(surf, (45, 110, 190), rect)
-            for wy in (16, 33):
-                pts = [(ox + p(6, 0)[0], oy + p(0, wy)[1]),
-                       (ox + p(16, 0)[0], oy + p(0, wy - 4)[1]),
-                       (ox + p(26, 0)[0], oy + p(0, wy)[1]),
-                       (ox + p(36, 0)[0], oy + p(0, wy - 4)[1]),
-                       (ox + p(44, 0)[0], oy + p(0, wy)[1])]
-                pygame.draw.lines(surf, (130, 190, 240), False, pts, 2)
-            pygame.draw.rect(surf, (25, 70, 140), rect, 1)
-        else:
-            pygame.draw.rect(surf, (88, 92, 100), rect)
-            peak = [(ox + p(5, 0)[0], oy + p(0, 44)[1]),
-                    (ox + p(25, 0)[0], oy + p(0, 7)[1]),
-                    (ox + p(45, 0)[0], oy + p(0, 44)[1])]
-            shade = [peak[1], peak[2], (ox + p(25, 0)[0], oy + p(0, 44)[1])]
-            cap = [(ox + p(18, 0)[0], oy + p(0, 20)[1]),
-                   peak[1],
-                   (ox + p(32, 0)[0], oy + p(0, 20)[1])]
-            pygame.draw.polygon(surf, (140, 144, 154), peak)
-            pygame.draw.polygon(surf, (105, 109, 119), shade)
-            pygame.draw.polygon(surf, (245, 248, 255), cap)
-            pygame.draw.rect(surf, (55, 58, 66), rect, 1)
+        if kind != WATER:
+            continue
+        pts = iso.diamond(x, y)
+        pygame.draw.polygon(surf, (45, 110, 190), pts)
+        cx, cy = iso.tile_center(x, y)
+        for dy in (-5, 4):
+            wave = [(cx - 14, cy + dy), (cx - 7, cy + dy - 2), (cx, cy + dy),
+                    (cx + 7, cy + dy - 2), (cx + 14, cy + dy)]
+            pygame.draw.lines(surf, (130, 190, 240), False, wave, 2)
+        pygame.draw.polygon(surf, (25, 70, 140), pts, 1)
+    return surf
+
+
+def build_mountain_sprite():
+    """Один спрайт горы (пирамида со снежной шапкой). Низ спрайта — ромб клетки."""
+    w, h, ph = settings.ISO_W, settings.ISO_H, settings.ISO_PEAK_H
+    surf = pygame.Surface((w, h + ph), pygame.SRCALPHA)
+    cx = w // 2
+    base = ph + h // 2                      # центр ромба основания в спрайте
+    left, right = (0, base), (w - 1, base)
+    bottom, back = (cx, base + h // 2 - 1), (cx, base - h // 2)
+    apex = (cx, 2)
+
+    def lerp(a, b, t):
+        return (int(a[0] + (b[0] - a[0]) * t), int(a[1] + (b[1] - a[1]) * t))
+
+    pygame.draw.polygon(surf, (88, 92, 100), [left, back, right, bottom])   # каменное основание
+    left_face, right_face = [left, bottom, apex], [bottom, right, apex]
+    pygame.draw.polygon(surf, (105, 109, 119), left_face)
+    pygame.draw.polygon(surf, (140, 144, 154), right_face)
+    t = 0.38
+    pygame.draw.polygon(surf, (225, 230, 240), [apex, lerp(apex, left, t), lerp(apex, bottom, t)])
+    pygame.draw.polygon(surf, (250, 252, 255), [apex, lerp(apex, bottom, t), lerp(apex, right, t)])
+    pygame.draw.polygon(surf, (55, 58, 66), left_face, 1)
+    pygame.draw.polygon(surf, (55, 58, 66), right_face, 1)
     return surf

@@ -8,9 +8,18 @@ TILE_SIZE = 50                      # размер клетки сетки
 INTERFACE_HEIGHT = 80               # высота нижней панели интерфейса
 FIELD_HEIGHT = HEIGHT - INTERFACE_HEIGHT  # область окна, в которой стоит карта
 
+# Изометрия: каждая клетка рисуется ромбом ISO_W x ISO_H (соотношение 2:1).
+# TILE_SIZE остаётся «логическим» размером клетки для плоской логики и анимации.
+ISO_W = 64                          # ширина ромба клетки (пиксели)
+ISO_H = 32                          # высота ромба клетки (пиксели)
+ISO_PEAK_H = 36                     # высота горы над землёй
+ISO_TOP_PAD = 44                    # запас сверху карты под горы и спрайты верхнего ряда
+ISO_UNIT_LIFT = 8                   # на сколько спрайт юнита приподнят над центром клетки
+
 # Размеры карты в клетках (колонки, строки). Окно всегда 1920x1080,
 # карта выбранного размера ставится по центру. Числа можно менять в любой момент.
-# Максимум, который поместится: 38 x 20.
+# В изометрии ширина карты = (колонки + строки) * ISO_W / 2, поэтому
+# ограничение — сумма колонок и строк (максимум 59, например 38 x 20).
 FIELD_PRESETS = {
     'small':  (30, 15),
     'medium': (34, 18),
@@ -34,12 +43,15 @@ def apply_field_preset(key):
     if key not in FIELD_PRESETS:
         key = DEFAULT_FIELD_PRESET
     cols, rows = FIELD_PRESETS[key]
-    # карта не может быть больше области под неё
-    cols = max(1, min(cols, WIDTH // TILE_SIZE))
-    rows = max(1, min(rows, FIELD_HEIGHT // TILE_SIZE))
+    # карта не может быть больше области под неё (в изометрии важна сумма cols + rows)
+    max_sum = min(WIDTH // ISO_W * 2, (FIELD_HEIGHT - ISO_TOP_PAD) // (ISO_H // 2))
+    cols, rows = max(1, cols), max(1, rows)
+    while cols + rows > max_sum and cols > 1:
+        cols -= 1
     FIELD_PRESET = key
     COLS, ROWS = cols, rows
-    MAP_WIDTH, MAP_HEIGHT = cols * TILE_SIZE, rows * TILE_SIZE
+    MAP_WIDTH = (cols + rows) * ISO_W // 2
+    MAP_HEIGHT = (cols + rows) * ISO_H // 2 + ISO_TOP_PAD
     MAP_OFFSET_X = (WIDTH - MAP_WIDTH) // 2
     MAP_OFFSET_Y = (FIELD_HEIGHT - MAP_HEIGHT) // 2
 
@@ -127,4 +139,4 @@ SHOP_ANIM_DURATION = 250                # длительность анимац�
 
 UI_ANIM_DURATION = 400                  # длительность анимации появления UI (мс)
 UI_STAGGER_DELAY = 40                   # задержка между появлением соседних элементов (мс)
-UI_SLIDE_DISTANCE = 10                  # расстояние выезда панели снизу (пиксели)
+UI_SLIDE_DISTANCE = 10                  # расстояние выезда панели снизу (пиксели)

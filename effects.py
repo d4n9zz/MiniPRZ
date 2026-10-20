@@ -1,16 +1,19 @@
 import pygame
 import math
 import random
+import settings
+import iso
 from settings import TILE_SIZE, HIT_EFFECT_COLORS, DEATH_EFFECT_COLORS
 
 
 class DamageNumber:
-    __slots__ = ['pos', 'value', 'y_offset', 'timer']
+    __slots__ = ['pos', 'value', 'sx', 'y_offset', 'timer']
 
     def __init__(self, pos, value):
         self.pos = pos
         self.value = value
-        self.y_offset = pos[1] * TILE_SIZE + TILE_SIZE // 2
+        self.sx, cy = iso.tile_center(pos[0], pos[1])
+        self.y_offset = cy - settings.ISO_UNIT_LIFT - 10
         self.timer = 20
 
     def update(self):
@@ -22,7 +25,7 @@ class DamageNumber:
         from settings import damage_font
         if tuple(self.pos) not in visible_tiles or not damage_font:
             return
-        px = self.pos[0] * TILE_SIZE + TILE_SIZE // 2
+        px = self.sx
         py = self.y_offset
         if self.value >= 4:
             color = (255, 69, 0)
@@ -56,12 +59,13 @@ class BattleEffect:
     def draw(self, screen, visible_tiles):
         if tuple(self.pos) not in visible_tiles:
             return
-        px = self.pos[0] * TILE_SIZE + TILE_SIZE // 2
-        py = self.pos[1] * TILE_SIZE + TILE_SIZE // 2
+        px, py = iso.tile_center(self.pos[0], self.pos[1])
+        py -= settings.ISO_UNIT_LIFT
         pulse = abs(math.sin(pygame.time.get_ticks() / 80)) * 6
         color = HIT_EFFECT_COLORS[self.color_index]
-        pygame.draw.circle(screen, color, (int(px), int(py)),
-                           int(TILE_SIZE // 3 + 8 + pulse), 4)
+        rx = int(TILE_SIZE // 3 + 8 + pulse)      # кольцо в изометрии — эллипс 2:1
+        ry = max(5, rx // 2)
+        pygame.draw.ellipse(screen, color, (px - rx, py - ry, rx * 2, ry * 2), 4)
 
 
 class DeathEffect:
@@ -72,10 +76,12 @@ class DeathEffect:
         self.timer = 30
         self.particles = []
         self.expansion = 0
+        start_x, start_y = iso.tile_center(pos[0], pos[1])
+        start_y -= settings.ISO_UNIT_LIFT
         for _ in range(20):
             self.particles.append({
-                'x': pos[0] * TILE_SIZE + TILE_SIZE // 2,
-                'y': pos[1] * TILE_SIZE + TILE_SIZE // 2,
+                'x': start_x,
+                'y': start_y,
                 'vx': (random.random() - 0.5) * 10,
                 'vy': (random.random() - 0.5) * 10,
                 'color': DEATH_EFFECT_COLORS[random.randint(0, len(DEATH_EFFECT_COLORS) - 1)],
@@ -95,13 +101,15 @@ class DeathEffect:
     def draw(self, screen, visible_tiles):
         if tuple(self.pos) not in visible_tiles:
             return
-        px = self.pos[0] * TILE_SIZE + TILE_SIZE // 2
-        py = self.pos[1] * TILE_SIZE + TILE_SIZE // 2
+        px, py = iso.tile_center(self.pos[0], self.pos[1])
         alpha = max(0, min(255, self.timer * 10))
-        expansion_surf = pygame.Surface((TILE_SIZE * 2, TILE_SIZE * 2), pygame.SRCALPHA)
-        pygame.draw.circle(expansion_surf, (255, 100, 100, alpha),
-                           (TILE_SIZE, TILE_SIZE), int(self.expansion), 3)
-        screen.blit(expansion_surf, (px - TILE_SIZE, py - TILE_SIZE))
+        e = int(self.expansion)
+        if e >= 6:
+            half = settings.ISO_W
+            expansion_surf = pygame.Surface((half * 2, half * 2), pygame.SRCALPHA)
+            pygame.draw.ellipse(expansion_surf, (255, 100, 100, alpha),
+                                (half - e, half - e // 2, e * 2, e), 3)
+            screen.blit(expansion_surf, (px - half, py - half))
         for p in self.particles:
             if p['size'] > 0:
                 pygame.draw.circle(screen, p['color'], (int(p['x']), int(p['y'])), int(p['size']))

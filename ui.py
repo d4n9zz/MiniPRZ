@@ -90,7 +90,7 @@ def draw_stars_panel(screen, stars, stars_change):
     stars_value = font.render(str(stars), True, (255, 215, 0))
 
     hint_lines = [
-        "[B] Shop   [RMB] Info   [L] Log",
+        "[B] Shop   [RMB] Info   [MMB] Rotate   [L] Log",
         "[Space] End turn",
     ]
     hint_surfs = [hint_font.render(t, True, (170, 182, 205)) for t in hint_lines]
@@ -319,4 +319,4 @@ screen, turn_timer_start, turn_time, small_font, paused, pause_start_time, total
         bg_surf.fill((0, 0, 0, 180))
         time_y = bar_y + bar_h // 2 - time_text.get_height() // 2
         screen.blit(bg_surf, (bar_x - time_text.get_width() - 20, time_y))
-        screen.blit(time_text, (bar_x - time_text.get_width() - 16, time_y))
+        screen.blit(time_text, (bar_x - time_text.get_width() - 16, time_y))
