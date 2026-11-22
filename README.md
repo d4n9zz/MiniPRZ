@@ -24,4 +24,4 @@
 python -m PyInstaller --onefile --windowed --name MiniPRZ main.py
 ```
 ### 4. Готовый .exe файл появится в папке dist
-## Или скачай готовый релиз
+## Или скачай готовый релиз уже в git
